@@ -1,7 +1,7 @@
 """Mock 数据：用《自顶向下》前两章演示完整数据结构与接口。
 
 生产环境中这些数据应来自数据库或磁盘文件；这里为保持轻量，直接以内联
-方式给出，并在模块底部构建 ``LAB_INDEX`` 供 labs 路由做 O(1) 查询。
+方式给出，并在模块底部构建 ``LAB_INDEX`` 供章节下的 lab 路由做 O(1) 查询。
 """
 
 from __future__ import annotations
@@ -193,6 +193,34 @@ GUIDES: dict[str, str] = {
 
 提交源码并附上客户端运行截图。
 """,
+    "sock-websocket": """# Socket 编程练习：WebSocket 服务器（Ping/Pong）
+
+> 对应教材 **Chapter 2**「Application Layer」的 WebSocket 与实时通信（本练习按要求归入 Chapter 1 展示）。
+
+## 任务
+
+使用 Python 的 `websockets` 库实现一个 WebSocket 服务器：
+
+1. 监听 `127.0.0.1` 上的指定端口（通过命令行 `--port` 或环境变量 `PORT` 读取）。
+2. 收到消息 `ping` 时，回送 `pong`。
+3. 收到任何其它消息时，回送 `unknown`。
+
+## 初始代码
+
+见附件 `ws_server.py`，请补全 `handler` 函数。
+
+## 测试
+
+点击右侧「运行测试」，判题程序会依次：
+
+- 连接 `ws://127.0.0.1:<端口>`
+- 发送 `ping`，断言回显为 `pong`
+- 发送 `hello`，断言回显为 `unknown`
+
+## 评分标准
+
+- 正确建立 WebSocket 连接并按规则回显（100%）
+""",
     "ws-dns": """# DNS 协议实验
 
 > 对应教材 **Chapter 2**「Application Layer」。
@@ -298,7 +326,19 @@ CHAPTERS: list[Chapter] = [
                 guide_path="static/guides/ws-intro.md",
             ),
         ],
-        socket_exercises=[],
+        socket_exercises=[
+            SocketExercise(
+                id="sock-websocket",
+                title="WebSocket 服务器：Ping/Pong",
+                language="python",
+                starter_code_path="static/starter/ws_server.py",
+                guide_path="static/guides/sock-websocket.md",
+                test_cases=[
+                    TestCase(name="ping→pong", input="ping", expected="pong"),
+                    TestCase(name="其他→unknown", input="hello", expected="unknown"),
+                ],
+            ),
+        ],
     ),
     Chapter(
         id="ch2",
@@ -541,6 +581,9 @@ for _ch in CHAPTERS:
         LAB_INDEX[_sock.id] = _lab_from_socket(_ch, _sock)
 
 
-def get_lab(lab_id: str) -> Lab | None:
-    """按 ``lab_id`` 查询 Lab 详情；不存在时返回 ``None``。"""
-    return LAB_INDEX.get(lab_id)
+def get_lab(chapter_id: str, lab_id: str) -> Lab | None:
+    """按 ``chapter_id`` + ``lab_id`` 查询 Lab 详情；章节不存在或 Lab 不属于该章节时返回 ``None``。"""
+    lab = LAB_INDEX.get(lab_id)
+    if lab is None or lab.chapter_id != chapter_id:
+        return None
+    return lab

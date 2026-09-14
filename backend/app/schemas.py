@@ -134,7 +134,7 @@ class Attachment(_StrictModel):
 
 
 class Lab(_StrictModel):
-    """GET /api/v1/labs/{lab_id} 返回的 Lab 详情。
+    """GET /api/v1/chapters/{chapter_id}/labs/{lab_id} 返回的 Lab 详情。
 
     Wireshark 实验与 Socket 练习共用此统一结构，``type`` 字段加以区分。
     """
@@ -156,12 +156,25 @@ class Lab(_StrictModel):
     test_cases: list[TestCase] = Field(default_factory=list)
 
 
+class HealthResponse(_StrictModel):
+    """GET / 健康检查的响应体。"""
+
+    status: Literal["ok"] = Field(..., description="固定为 ok")
+    app: str = Field(..., description="应用名")
+
+
+class ErrorResponse(_StrictModel):
+    """统一错误响应体，结构与 FastAPI 默认的 ``{"detail": ...}`` 一致。"""
+
+    detail: str = Field(..., description="错误详情")
+
+
 # --------------------------------------------------------------------------
 # 判题（evaluator）相关模型
 # --------------------------------------------------------------------------
 
 class RunRequest(_StrictModel):
-    """POST /api/v1/labs/{lab_id}/run 的请求体。"""
+    """POST /api/v1/chapters/{chapter_id}/labs/{lab_id}/run 的请求体。"""
 
     code: str = Field(..., min_length=1, description="用户提交的源码")
 

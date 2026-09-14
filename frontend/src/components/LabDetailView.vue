@@ -3,17 +3,15 @@
  * LabDetailView.vue —— Lab 详情页（左右分栏 · 暗色开发者 UI）
  *
  * 依赖安装：npm i markdown-it highlight.js
- * 路由：自动读取 route.params.id（也可通过 props.labId 显式传入）
+ * 路由：自动读取 route.params.chapterId / route.params.labId（也可通过 props.labId 显式传入）
  *
  * 后端契约（与 backend/app/api/labs.py 对齐）：
- *   GET  /api/v1/labs/{lab_id}      -> Lab（含 guide 全文 / starter_code / document_path / test_cases）
- *   POST /api/v1/labs/{lab_id}/run  -> 流式返回测试日志（按行 / NDJSON，见 runBackendTests）
+ *   GET  /api/v1/chapters/{chapter_id}/labs/{lab_id}      -> Lab（含 guide 全文 / starter_code / document_path / test_cases）
+ *   POST /api/v1/chapters/{chapter_id}/labs/{lab_id}/run  -> 流式返回测试日志（按行 / NDJSON，见 runBackendTests）
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import MarkdownIt from 'markdown-it'
-import hljs from 'highlight.js'
-import 'highlight.js/styles/github-dark.css'
+import { createMarkdown } from '../markdown'
 import VuePdfEmbed, { GlobalWorkerOptions } from 'vue-pdf-embed/dist/index.essential.mjs'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -25,7 +23,7 @@ GlobalWorkerOptions.workerSrc = PdfWorker
 // Props
 // ---------------------------------------------------------------------------
 const props = defineProps({
-  /** 实验室 id；不传时回退到路由参数 id（或旧参数 lab_id） */
+  /** 实验室 id；不传时回退到路由参数 labId */
   labId: { type: String, default: '' },
 })
 
@@ -38,26 +36,11 @@ const DEFAULT_CODE =
   '# 初始代码模板\n# Socket 练习请在此编写并点击「运行测试」；Wireshark 实验以左侧指南为准。\n'
 
 // ---------------------------------------------------------------------------
-// Markdown 渲染器（markdown-it + highlight.js）
+// Markdown 渲染器（markdown-it + highlight.js，见 src/markdown.js）
 // ---------------------------------------------------------------------------
 // 注意：html:false 会转义指南里的原始 HTML，降低 XSS 风险；
 // 若指南可能来自不可信来源，建议再叠加 DOMPurify 做白名单清洗。
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: false,
-  highlight(str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        const value = hljs.highlight(str, { language: lang, ignoreIllegals: true }).value
-        return `<pre class="hljs"><code>${value}</code></pre>`
-      } catch {
-        /* 高亮失败走下方兜底 */
-      }
-    }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`
-  },
-})
+const md = createMarkdown()
 
 // ---------------------------------------------------------------------------
 // 状态
@@ -73,7 +56,8 @@ const logs = ref([])
 const terminalRef = ref(null)
 let abortController = null
 
-const labId = computed(() => props.labId || route.params.id || route.params.lab_id)
+const labId = computed(() => props.labId || route.params.labId)
+const chapterId = computed(() => route.params.chapterId)
 
 // ---------------------------------------------------------------------------
 // 派生数据
@@ -108,7 +92,7 @@ async function fetchLab() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch(`${API_BASE}/api/v1/labs/${labId.value}`, {
+    const res = await fetch(`${API_BASE}/api/v1/chapters/${chapterId.value}/labs/${labId.value}`, {
       signal: abortController.signal,
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -135,7 +119,7 @@ function loadStarterCode() {
 const LOG_COLORS = {
   cmd: 'text-zinc-300',
   info: 'text-zinc-400',
-  ok: 'text-emerald-400',
+  ok: 'text-brand',
   err: 'text-rose-400',
   warn: 'text-amber-400',
 }
@@ -181,9 +165,9 @@ async function runTests() {
   }
 }
 
-/** 调用 POST /api/v1/labs/{id}/run，解析 JSON 判题结果。 */
+/** 调用 POST /api/v1/chapters/{chapter_id}/labs/{lab_id}/run，解析 JSON 判题结果。 */
 async function runBackendTests() {
-  const res = await fetch(`${API_BASE}/api/v1/labs/${labId.value}/run`, {
+  const res = await fetch(`${API_BASE}/api/v1/chapters/${chapterId.value}/labs/${labId.value}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code: code.value }),
@@ -237,11 +221,11 @@ async function copyAnswer() {
 // 生命周期
 // ---------------------------------------------------------------------------
 watch(
-  labId,
+  [labId, chapterId],
   () => {
-    if (!labId.value) {
+    if (!labId.value || !chapterId.value) {
       loading.value = false
-      error.value = '未提供 lab_id 参数'
+      error.value = '未提供 chapter_id / lab_id 参数'
       return
     }
     fetchLab()
@@ -256,7 +240,7 @@ onBeforeUnmount(() => abortController?.abort())
   <div class="flex h-full w-full overflow-hidden bg-zinc-950 text-zinc-100 antialiased">
     <!-- 加载中 -->
     <div v-if="loading" class="flex w-full items-center justify-center gap-3 text-zinc-400">
-      <span class="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-sky-400"></span>
+      <span class="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-theme"></span>
       正在加载 Lab…
     </div>
 
@@ -265,7 +249,7 @@ onBeforeUnmount(() => abortController?.abort())
       <div class="text-4xl">⚠️</div>
       <p class="text-zinc-300">{{ error }}</p>
       <button
-        class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500"
+        class="rounded-lg bg-theme-dark px-4 py-2 text-sm font-medium text-white transition hover:bg-theme"
         @click="fetchLab"
       >
         重试
@@ -281,8 +265,8 @@ onBeforeUnmount(() => abortController?.abort())
             class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1"
             :class="
               lab.type === 'wireshark'
-                ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30'
-                : 'bg-sky-500/10 text-sky-300 ring-sky-500/30'
+                ? 'bg-brand/10 text-brand ring-brand/30'
+                : 'bg-theme/10 text-theme-light ring-theme/30'
             "
           >{{ typeLabel }}</span>
           <h1 class="text-lg font-semibold text-white">{{ lab.title }}</h1>
@@ -309,7 +293,7 @@ onBeforeUnmount(() => abortController?.abort())
                 :href="documentUrl"
                 target="_blank"
                 rel="noopener"
-                class="text-sky-400 transition hover:underline"
+                class="text-theme-light transition hover:underline"
               >
                 {{ documentName }} ↗
               </a>
@@ -358,7 +342,7 @@ onBeforeUnmount(() => abortController?.abort())
         <!-- 终端日志 -->
         <div class="flex h-2/5 flex-col">
           <div class="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
-            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span class="h-2 w-2 rounded-full bg-brand"></span>
             <span class="text-xs font-medium text-zinc-400">Terminal</span>
             <div class="ml-auto flex items-center gap-2">
               <button
@@ -369,7 +353,7 @@ onBeforeUnmount(() => abortController?.abort())
               </button>
               <button
                 :disabled="running"
-                class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-md bg-theme-dark px-3 py-1 text-xs font-medium text-white transition hover:bg-theme disabled:cursor-not-allowed disabled:opacity-50"
                 @click="runTests"
               >
                 <span
@@ -427,106 +411,3 @@ onBeforeUnmount(() => abortController?.abort())
     </div>
   </div>
 </template>
-
-<style>
-/* Markdown 指南排版（暗色）。注意：v-html 注入的内容不带 scoped 属性，
-   故这里使用全局选择器，并靠 .markdown-body 命名空间避免样式泄漏。 */
-.markdown-body {
-  font-size: 0.875rem;
-  line-height: 1.75;
-  color: #d4d4d8;
-}
-.markdown-body h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #fafafa;
-  margin: 1.5rem 0 0.75rem;
-}
-.markdown-body h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #f4f4f5;
-  margin: 1.25rem 0 0.6rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid #27272a;
-}
-.markdown-body h3 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #e4e4e7;
-  margin: 1rem 0 0.5rem;
-}
-.markdown-body p {
-  margin: 0.6rem 0;
-}
-.markdown-body a {
-  color: #38bdf8;
-  text-decoration: underline;
-}
-.markdown-body strong {
-  color: #fafafa;
-}
-.markdown-body ul,
-.markdown-body ol {
-  padding-left: 1.25rem;
-  margin: 0.6rem 0;
-}
-.markdown-body ul {
-  list-style: disc;
-}
-.markdown-body ol {
-  list-style: decimal;
-}
-.markdown-body li {
-  margin: 0.25rem 0;
-}
-.markdown-body blockquote {
-  border-left: 3px solid #3f3f46;
-  padding: 0.25rem 1rem;
-  margin: 0.75rem 0;
-  color: #a1a1aa;
-}
-.markdown-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.markdown-body :not(pre) > code {
-  background: #27272a;
-  color: #fbbf24;
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-}
-.markdown-body pre {
-  margin: 0.75rem 0;
-  padding: 1rem;
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 0.5rem;
-  overflow-x: auto;
-}
-.markdown-body pre code {
-  background: transparent;
-  color: inherit;
-  padding: 0;
-}
-.markdown-body table {
-  border-collapse: collapse;
-  margin: 0.75rem 0;
-  width: 100%;
-}
-.markdown-body th,
-.markdown-body td {
-  border: 1px solid #3f3f46;
-  padding: 0.4rem 0.6rem;
-  text-align: left;
-}
-.markdown-body th {
-  background: #18181b;
-  color: #fafafa;
-}
-.markdown-body hr {
-  border: 0;
-  border-top: 1px solid #27272a;
-  margin: 1rem 0;
-}
-</style>
