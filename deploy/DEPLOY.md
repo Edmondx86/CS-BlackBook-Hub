@@ -165,6 +165,31 @@ chown -R csbb:csbb /srv/cs-blackbook
 > 如果你的服务器是 **Python 3.10 或更低**，`websockets==17.1` 会装不上
 > （它要求 >=3.11）—— 先确认 `python3 --version`。
 
+### 3.1 单独上传作业 PDF（不在仓库里）
+
+`backend/static/docs/` 下的 16 个作业要求 PDF 合计约 24 MB，**不随仓库分发**
+（原因与清单见该目录里的 `README.md`）。代码传完之后，PDF 要再单独传一次：
+
+```bash
+# 在本地执行；服务器上目录已存在，直接同步进去即可
+rsync -av backend/static/docs/ \
+      root@<你的服务器IP>:/srv/cs-blackbook/backend/static/docs/
+```
+
+**不用重启后端** —— `/static` 是静态目录挂载，文件到位就能访问：
+
+```bash
+curl -sI http://127.0.0.1:8000/static/docs/ws-tcp.pdf | head -1     # 期望 HTTP 200
+```
+
+漏传了也不要紧，但要知道症状：后端在文件不存在时返回 `document_path: null`
+（`mock_data._document_path()` 会先查磁盘），前端拿到 `null` 就不渲染 PDF 区块 ——
+所以后果是「实验页少了文档阅读区」，**不会**出现加载失败的面板，
+指南、代码编辑、判题都不受影响。
+
+如果以后想把 PDF 放到对象存储，改 `backend/app/mock_data.py` 里的 `DOCUMENTS`
+字典即可（它存的本来就是 URL 路径），届时 `_document_path()` 的存在性检查要一并去掉。
+
 ## 4. 配置后端服务
 
 ```bash
@@ -301,7 +326,7 @@ ss -lntp | grep 8000                      # 应显示 127.0.0.1:8000，不能是
 curl -s -o /dev/null -w 'home    %{http_code}\n' https://csblackbookhub.com/
 curl -s -o /dev/null -w 'www     %{http_code}\n' https://www.csblackbookhub.com/
 curl -s -o /dev/null -w 'api     %{http_code}\n' https://csblackbookhub.com/api/v1/chapters
-curl -s -o /dev/null -w 'static  %{http_code}\n' https://csblackbookhub.com/static/docs/ws-http.pdf
+curl -s -o /dev/null -w 'static  %{http_code}\n' https://csblackbookhub.com/static/docs/ws-http.pdf   # 期望 200（PDF 已单独上传）
 curl -s -o /dev/null -w 'docs    %{http_code}\n' https://csblackbookhub.com/docs      # 期望 404（已关）
 
 # c) HTTP 应 301 跳到 HTTPS
