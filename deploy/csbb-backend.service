@@ -1,0 +1,66 @@
+# CS-BlackBook-Hub 后端 systemd 服务（宿主机部署，不用 Docker）
+#
+# 安装位置：/etc/systemd/system/csbb-backend.service
+# 用法见 deploy/DEPLOY.md
+#
+# 为什么要写这么多沙箱化指令：
+#   判题接口会在本服务的子进程里执行访客提交的 Python 代码。隔离一共三层：
+#     1) bubblewrap（应用层，见 backend/app/services/sandbox.py）：命名空间 + 只读根 + 私有 /tmp
+#     2) 本文件的 systemd 限制：写不了系统目录、看不到家目录、开不了奇怪的内核接口
+#     3) iptables 按 uid 封锁出站（见 deploy/DEPLOY.md 第 7 节）
+#   缺任何一层都少一道防线。
+
+[Unit]
+Description=CS-BlackBook-Hub backend (FastAPI + uvicorn)
+Documentation=file:/srv/cs-blackbook/ADD_NEW_LAB.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=csbb
+Group=csbb
+WorkingDirectory=/srv/cs-blackbook/backend
+
+# 公网部署：关掉 /docs 与 /openapi.json
+Environment=ENABLE_DOCS=false
+# 判题熔断开关：被刷时改成 false 再 systemctl restart 即可止血，不用改代码
+Environment=JUDGE_ENABLED=true
+# 判题引擎：subprocess（默认）。POSIX 上会自动用 bubblewrap 加命名空间隔离。
+# 不要改成 docker —— 现有 Docker 路径在 internal 网络上发布端口会静默失效，
+# 且 6 个 Lab 的学生代码硬编码连 127.0.0.1，容器里够不到宿主机的参考服务器。
+# 详见 deploy/DEPLOY.md 第 1 节。
+Environment=JUDGE_ENGINE=subprocess
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# 只监听回环地址：公网只能经由 nginx 访问，避免绕过限流
+ExecStart=/srv/cs-blackbook/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+Restart=always
+RestartSec=3
+
+# ---------- 沙箱化 ----------
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# 判题只需要临时目录（PrivateTmp 提供的私有 /tmp 可写），
+# 其余路径一律只读，因此这里不额外放开任何 ReadWritePaths。
+
+# ---------- 资源上限 ----------
+# 防止大量并发判题把轻量服务器打满
+MemoryMax=1G
+TasksMax=256
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target

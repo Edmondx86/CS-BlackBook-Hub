@@ -21,3 +21,23 @@ dist/
 # 其它
 *.log
 .DS_Store
+
+# Windows
+desktop.ini
+Thumbs.db
+
+# 本地工具配置（Claude Code 等）
+.claude/
+
+# 原始图片素材：pic/ 里是压缩前的大图与 sprite 原图（2.jpg 1.5MB、4.jpg 2.3MB 等），
+# 没有任何代码引用它们 —— 运行时实际加载的是 frontend/public/images 与 /imag。
+# 所以只把它排除出仓库，磁盘上仍保留着留作素材。
+pic/
+
+# 临时验证产物（截图等）
+_verify/
+
+# 作业要求 PDF：单个 2MB 上下、合计约 24MB，改动极少且与代码不同步，
+# 所以不随仓库分发，由部署时单独 rsync 到服务器。
+# 说明与清单见 backend/static/docs/README.md；后端在文件缺失时会返回 document_path=null。
+backend/static/docs/*.pdf

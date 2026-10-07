@@ -19,6 +19,11 @@
 | `backend/app/mock_data.py` → `CHAPTERS` | 注册 `WiresharkLab` / `SocketExercise` |
 | `backend/app/services/evaluator.py` → `STRATEGIES` | Socket 判题策略登记（仅 Socket） |
 
+> 附件说明：`/labs/{id}` 返回的 `attachments` **只收录磁盘上真实存在的文件**——`pcap_path`、
+> `guide_path`、`static/tests/<id>_tests.py` 只要文件不在，就会自动从列表里省略，不会产生断链。
+> 另外，**指南正文一律取自 `GUIDES` 内联字符串**，与 `guide_path` 指向的文件无关（后者只是元数据）。
+> Socket 练习的「参考服务器代码」会先找 `static/solutions/`，找不到再找 `judge/servers/`。
+
 ---
 
 ## 一、Wireshark 实验样板

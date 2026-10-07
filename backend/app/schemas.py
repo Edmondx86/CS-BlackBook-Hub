@@ -151,6 +151,8 @@ class Lab(_StrictModel):
     guide: str = Field(..., description="Markdown 指南的完整内容")
     starter_code: str = Field(default="", description="初始代码模板内容（已内联，前端直接使用）")
     reference_code: str = Field(default="", description="参考答案代码（已内联，供「显示参考答案」使用）")
+    reference_server_code: str = Field(default="", description="参考服务器代码（学生写客户端时，后端判题对端的服务器实现）")
+    hints: list[str] = Field(default_factory=list, description="分级提示（前端逐级揭示，最后才是参考答案）")
     document_path: str | None = Field(default=None, description="作业要求文档（PDF）的访问路径")
     attachments: list[Attachment] = Field(default_factory=list)
     test_cases: list[TestCase] = Field(default_factory=list)
@@ -173,10 +175,20 @@ class ErrorResponse(_StrictModel):
 # 判题（evaluator）相关模型
 # --------------------------------------------------------------------------
 
+# 提交源码的体积上限：正常作业在 10 KB 量级，这里留足余量，
+# 同时挡掉超大请求体，避免判题服务被一个请求拖垮。
+MAX_SUBMISSION_CHARS = 200_000
+
+
 class RunRequest(_StrictModel):
     """POST /api/v1/chapters/{chapter_id}/labs/{lab_id}/run 的请求体。"""
 
-    code: str = Field(..., min_length=1, description="用户提交的源码")
+    code: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_SUBMISSION_CHARS,
+        description="用户提交的源码",
+    )
 
 
 class EvaluationCheck(_StrictModel):

@@ -1,19 +1,37 @@
 services:
   backend:
     build: ./backend
-    container_name: cs-topdown-backend
-    ports:
-      - "8000:8000"
+    container_name: cs-blackbook-backend
+    # 不对外发布端口：只有同一网络的 nginx 能访问它，公网无法直连 API 或 /docs。
+    # 同时这也让后端的 X-Forwarded-For 可信（见 app/services/guard.py 的限流实现）。
+    expose:
+      - "8000"
     environment:
-      - HOST=0.0.0.0
-      - PORT=8000
+      # 公网部署：关掉 /docs 与 /openapi.json，少一处可探测面
+      - ENABLE_DOCS=false
+      # 判题熔断开关：被刷时改成 false 并重启即可止血（不必改代码）
+      - JUDGE_ENABLED=true
+    networks:
+      - judge-net
     restart: unless-stopped
 
   frontend:
     build: ./frontend
-    container_name: cs-topdown-frontend
+    container_name: cs-blackbook-frontend
     ports:
       - "80:80"
     depends_on:
       - backend
+    # 前端同时挂两个网络：default 保证 80 端口对外可达，judge-net 用于反代到 backend
+    networks:
+      - default
+      - judge-net
     restart: unless-stopped
+
+networks:
+  # 判题内网：标记 internal 后，只挂在这个网络上的容器没有对外路由。
+  # 后端只挂这里 —— 学生提交的代码即使在后端容器里被执行，也无法访问外网
+  # （防止被当作跳板去压测/攻击第三方，或把服务器 IP 刷进黑名单）。
+  judge-net:
+    driver: bridge
+    internal: true

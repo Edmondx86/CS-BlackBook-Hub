@@ -1,0 +1,14 @@
+# 统一换行符：仓库里一律存 LF（部署目标是 Linux），Windows 检出也用 LF 以免脚本出问题
+* text=auto eol=lf
+
+# 二进制文件不参与换行符转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary

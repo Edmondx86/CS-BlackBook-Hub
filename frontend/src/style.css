@@ -1,3 +1,39 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 全局磨砂渐变背景：深色底 + brand（青绿）/ theme（紫）柔光斑，随视口固定，营造模糊磨砂感 */
+body {
+  background-color: rgb(var(--bg-page));
+  background-image:
+    radial-gradient(ellipse 80% 60% at 15% 5%, rgb(var(--theme) / 0.40), transparent 60%),
+    radial-gradient(ellipse 70% 60% at 85% 95%, rgb(var(--brand) / 0.36), transparent 60%),
+    radial-gradient(ellipse 45% 40% at 85% 10%, rgb(var(--brand) / 0.20), transparent 55%),
+    radial-gradient(ellipse 50% 45% at 10% 90%, rgb(var(--theme) / 0.22), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* 卡片右侧滑动窗：斜切“/”形状（LabCard / 章节目录复用） */
+.slide-panel {
+  clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%);
+}
+
+/* 全局滚动条：深色细条 + 透明轨道，避免暗色主题里默认白色滚动条突兀 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--scrollbar)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--scrollbar));
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--scrollbar-hover));
+}

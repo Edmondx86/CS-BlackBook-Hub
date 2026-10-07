@@ -1,11 +1,13 @@
-# CS Top-Down Hub —— 计算机网络（自顶向下）学习平台
+# **CS-BlackBook-Hub —— 计算机黑皮书学习平台**
+
+### 目前只实现了《计算机网络--自顶向下方法》教材的学习，其他的会陆续上线
 
 全栈项目：FastAPI 后端 + Vue 3 前端，提供章节目录、Wireshark/Socket Lab 与在线判题。
 
 ## 目录结构
 
 ```
-cs-topdown-hub/
+cs-blackbook-hub/
 ├── backend/                # FastAPI 后端
 │   ├── app/
 │   │   ├── main.py         # 应用入口

@@ -1,6 +1,7 @@
 """FastAPI 应用入口。
 
-启动：``cd backend && uvicorn app.main:app --reload``
+启动：``cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000``
+（Windows 上不要加 ``--reload``：reload 模式会强制 SelectorEventLoop，导致判题沙箱的 asyncio subprocess 报 NotImplementedError。）
 交互式文档：http://127.0.0.1:8000/docs
 
 部署方式
@@ -42,6 +43,10 @@ app = FastAPI(
     description="课程章节目录、Lab（Wireshark / Socket）与在线判题接口。",
     version=settings.version,
     openapi_tags=tags_metadata,
+    # 公网部署可设 ENABLE_DOCS=false 关掉交互式文档与 schema，减少可探测面。
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
 )
 
 app.include_router(chapters.router)
