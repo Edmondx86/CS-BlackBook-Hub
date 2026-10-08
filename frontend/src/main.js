@@ -5,6 +5,7 @@ import HomeView from './views/HomeView.vue'
 import './theme.css'
 import './style.css'
 import './markdown.css'
+import './highlight.css'
 
 // 颜色模式初始化：挂载前按本地存储写入 <html data-theme>，避免主题闪烁（默认夜间）。
 if (localStorage.getItem('theme') === 'light') {

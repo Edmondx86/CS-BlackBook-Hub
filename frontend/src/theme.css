@@ -65,6 +65,15 @@
   --alpha-faint: 0.15;               /* 水印等极淡文字 */
   --alpha-soft: 0.70;                /* 次级提示文字 */
   --alpha-strong: 0.80;              /* 图标 / 箭头 */
+
+  /* —— 代码高亮 —— */
+  --code-text: 201 209 217;          /* #C9D1D9 基础代码文字 */
+  --code-comment: 139 148 158;       /* #8B949E 注释 */
+  --code-keyword: 255 123 114;       /* #FF7B72 关键字 / 类型 */
+  --code-string: 165 214 255;        /* #A5D6FF 字符串 */
+  --code-number: 121 192 255;        /* #79C0FF 数字 / 属性 / 变量 */
+  --code-function: 210 168 255;      /* #D2A8FF 函数 / 标题 */
+  --code-builtin: 255 166 87;        /* #FFA657 内建 */
 }
 
 /* 白天模式：浅灰蓝底 + 红(brand)/藏青(theme)点缀的清爽主题。
@@ -118,4 +127,13 @@
   --btn-bg-alt: 43 45 66;        /* 次按钮 = theme */
   --btn-bg-alt-hover: 30 32 48;  /* 次按钮悬停 = theme-dark */
   --btn-text-alt: 255 255 255;   /* 次按钮文字 */
+
+  /* —— 代码高亮（深色系，压浅底）—— */
+  --code-text: 36 41 47;         /* #24292F 基础代码文字 */
+  --code-comment: 106 115 125;   /* #6A737D 注释灰 */
+  --code-keyword: 207 34 46;     /* #CF222E 关键字红 */
+  --code-string: 10 48 108;      /* #0A306C 字符串深蓝 */
+  --code-number: 0 92 197;       /* #005CC5 数字蓝 */
+  --code-function: 130 80 223;   /* #8250DF 函数紫 */
+  --code-builtin: 149 56 0;      /* #953800 内建橙 */
 }

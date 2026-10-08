@@ -1,0 +1,70 @@
+/* 代码高亮配色：把 highlight.js 的 token 类映射到 theme.css 里的令牌。
+   之前是全局 import highlight.js/styles/github-dark.css —— 那是暗色专用主题，
+   白天模式下浅蓝的字符串 / 数字（#A5D6FF / #79C0FF）压在浅底上几乎看不清。
+   改成自己定义，明暗两套都随主题走，指南代码块与编辑器高亮共用这一份。 */
+
+.hljs {
+  color: rgb(var(--code-text));
+}
+
+/* 注释 / 引用 / 元信息里成块的说明 */
+.hljs-comment,
+.hljs-quote,
+.hljs-code,
+.hljs-formula {
+  color: rgb(var(--code-comment));
+}
+
+/* 关键字 / 类型 / 字面量 / 装饰器 */
+.hljs-keyword,
+.hljs-type,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-selector-tag,
+.hljs-name,
+.hljs-variable.language_ {
+  color: rgb(var(--code-keyword));
+}
+
+/* 字符串 */
+.hljs-string,
+.hljs-regexp,
+.hljs-meta .hljs-string {
+  color: rgb(var(--code-string));
+}
+
+/* 数字 / 属性 / 变量 / 运算符 */
+.hljs-number,
+.hljs-operator,
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-symbol {
+  color: rgb(var(--code-number));
+}
+
+/* 函数名 / 标题 / 类名 */
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-section,
+.hljs-function .hljs-title {
+  color: rgb(var(--code-function));
+}
+
+/* 内建 */
+.hljs-built_in {
+  color: rgb(var(--code-builtin));
+}
+
+/* 参数 */
+.hljs-params {
+  color: rgb(var(--code-text));
+}

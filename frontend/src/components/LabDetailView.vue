@@ -612,17 +612,16 @@ onBeforeUnmount(() => {
               <pre
                 ref="highlightEl"
                 aria-hidden="true"
-                class="pointer-events-none absolute inset-0 m-0 overflow-hidden whitespace-pre p-4 text-secondary"
+                class="pointer-events-none absolute inset-0 m-0 overflow-hidden whitespace-pre-wrap break-words p-4 text-secondary"
                 v-html="highlightedCode"
               ></pre>
               <!-- 输入层：文字透明只留光标，透过它看到下面的高亮文字 -->
               <textarea
                 ref="editorEl"
                 v-model="code"
-                wrap="off"
                 spellcheck="false"
                 placeholder="# 在这里编写代码…"
-                class="absolute inset-0 resize-none overflow-auto whitespace-pre bg-transparent p-4 font-mono text-sm leading-6 text-transparent caret-brand outline-none placeholder:text-faint"
+                class="absolute inset-0 resize-none overflow-auto whitespace-pre-wrap break-words bg-transparent p-4 font-mono text-sm leading-6 text-transparent caret-brand outline-none placeholder:text-faint"
                 @scroll="syncScroll"
                 @keydown="onEditorKeydown"
               ></textarea>
@@ -741,18 +740,3 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
-
-<style>
-/*
- * 编辑器注释配色：注释（# / // 等）用品牌绿着色，一眼可辨。
- * 高亮层是 v-html 注入的着色节点，Vue scoped 样式打不到，故此处用全局样式，
- * 通过 .code-editor 容器类限定作用范围，不影响左侧 Markdown 指南里的代码块。
- */
-.code-editor .hljs-comment,
-.code-editor .hljs-quote {
-  color: rgb(var(--brand));
-}
-.code-editor .hljs-meta {
-  color: rgb(var(--brand-light));
-}
-</style>

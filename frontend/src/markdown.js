@@ -2,7 +2,6 @@
 // 首页介绍（HomeView）与 Lab 指南（LabDetailView）共用，避免重复配置与高亮逻辑。
 import MarkdownIt from 'markdown-it'
 import hljs from './highlight'
-import 'highlight.js/styles/github-dark.css'
 
 export function createMarkdown(options = {}) {
   const md = new MarkdownIt({
