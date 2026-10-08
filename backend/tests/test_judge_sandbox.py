@@ -94,7 +94,7 @@ class UntrustedSpawnTest(unittest.TestCase):
 
         async def fake_start(spec):
             calls.append(spec)
-            return object()  # 只关心「有没有走沙箱」，不需要真的进程
+            return object()  # 只关心“有没有走沙箱”，不需要真的进程
 
         original = evaluator.start_sandbox
         evaluator.start_sandbox = fake_start

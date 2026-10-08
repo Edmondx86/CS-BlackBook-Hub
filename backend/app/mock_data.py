@@ -117,67 +117,150 @@ def _document_path(lab_id: str) -> str | None:
 GUIDES: dict[str, str] = {
     "ws-intro": """# Wireshark 入门实验
 
-> 对应教材 **Chapter 1**「Computer Networks and the Internet」。
-## 实验介绍
+> 对应教材 **Chapter 1 · Computer Networks and the Internet** ｜ 建议 40 分钟 ｜ 难度 ★☆☆
 
-如果你想加深自己对计算机网络的理解，那么自己动手操作是再好不过的方式了。
-用来观察执行协议的实体之间交换的报文的基本工具称为**分组嗅探器**（packet sniffer）。顾名思义，分组嗅探器可以捕获网络中传输的分组，并将其显示出来。Wireshark 是一个非常流行的分组嗅探器，它可以捕获网络中传输的分组，并将其显示出来，帮助我们理解网络协议的工作原理。
-最重要的是，Wireshark是免费的喔。
+## 这个实验要回答什么
 
-## 实验目标
+“分组嗅探器”到底在做什么？一次普通的网页访问，在链路上是什么样子？
+教科书里讲的协议分层，在真实的抓包里怎么体现出来？
 
-1. 熟悉 Wireshark 的抓包界面与基本过滤操作。
-2. 捕获并检查你的Web浏览器和Web服务器之间交换的协议报文。
+做完这个实验，你手里就有了一件贯穿全书的工具：**把看不见的协议变成看得见的分组**。
+后面每一个 Wireshark 实验都建立在这一套基本操作上，所以这个实验值得慢慢做。
 
-## 实验步骤
+## 开始之前
 
-1. 下载并安装Wireshark，链接在此（https://www.wireshark.org/download.html）。
-2. 访问一个浏览器站点（例如 http://www.example.com），并在Wireshark中查看信息格式和内容。
-3. 在Wireshark中使用过滤器过滤HTTP流量，观察HTTP请求和响应报文的结构和内容。
-4. 记录你观察到的HTTP请求方法、状态码、头字段等信息。
-
-### 2. 观察 HTTP 请求
-
-1. 选中一条 `GET / HTTP/1.1` 报文。
-2. 在「Packet Details」面板展开 `Hypertext Transfer Protocol` 层，记录：
-   - 请求方法（Request Method）
-   - Host 头字段
-   - User-Agent 头字段
-
-## 思考
-
-1. HTTP 属于什么层的协议？
-2. HTTP 请求报文的结构是怎样的？包括哪些部分？
-""",
-    "ws-http": """# HTTP 协议实验
-
-> 对应教材 **Chapter 2**「Application Layer」。
-
-## 实验目标
-
-1. 掌握 HTTP/1.1 请求与响应报文结构。
-2. 理解持久连接（Keep-Alive）与条件 GET（Conditional GET）。
-3. 观察浏览器缓存对网络行为的影响。
-
-## 实验材料
-
-- 抓包文件：`http.pcap`（见附件）
+- **下载安装 Wireshark**：<https://www.wireshark.org/download.html>
+  Windows 安装过程中会问要不要装 **Npcap**，**必须勾选**，否则打开后一个网卡都看不到。
+- **抓包需要管理员 / root 权限**（要把网卡切到混杂模式，这属于特权操作）。
+- **选对网卡**：无线网卡（Wi-Fi）还是有线，选那个“流量在跳”的。
+  装了虚拟机的话会多出 `vmnet*`、`lo` 之类的接口，那些通常没有你要的流量。
+- **分清两种过滤器**，这是最容易混的地方：
+  - **捕获过滤器**（Capture Filter）：抓之前设，不符合的包直接丢掉，省磁盘。
+  - **显示过滤器**（Display Filter）：抓之后筛，包都还在，只是不显示。
 
 ## 实验步骤
 
-1. 打开 `http.pcap`，过滤 `http`。
-2. 找到第一条 GET 请求，记录请求行与首部字段。
-3. 检查响应状态码，确认是否 `200 OK`。
-4. 观察是否存在 `If-Modified-Since` 头，分析条件 GET 的往返。
+1. 打开 Wireshark，在欢迎页的**接口列表**里挑一个流量在跳的接口，双击开始捕获。
+2. 让浏览器随便访问一个页面，然后回到 Wireshark 点左上角的红色方块停止捕获。
+3. **认识三个面板**：
+   - 上面：分组列表（一行一个报文，含时间、源、目的、协议、长度）
+   - 中间：分组详情（按协议分层展开，这是最常看的地方）
+   - 下面：分组字节（十六进制 + ASCII，用来核对字段的真实取值）
+4. 在最上面的**显示过滤器**栏输入 `http`，回车。观察列表只剩 HTTP 报文，右下角状态栏会显示已过滤的比例。
+5. 清空过滤器，随便点一个报文，在详情面板里逐层展开：
+   `Frame → Ethernet II → IPv4 → TCP → 应用层`。体会“一层包一层”的封装关系。
+6. 打开 `Statistics → Protocol Hierarchy`，看看这次抓包到底涉及哪些协议、各占多少 —— 你会发现自己平时上网的流量比想象中杂得多。
+7. `File → Save As` 保存成 `.pcapng`。后面每个实验都建议这样留档，方便回头再看。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `http` | 只看 HTTP |
+| `dns` | 只看 DNS |
+| `tcp` / `udp` / `icmp` | 按传输层协议筛 |
+| `ip.addr == 1.1.1.1` | 与某个 IP 有关的全部报文 |
+| `tcp.port == 443` | 按端口筛 |
+| `tcp and ip.addr == 1.1.1.1` | 用 `and` / `or` / `not` 组合 |
+| `!(arp or icmp)` | 排除某些协议 |
+
+> 小坑：判断“不相等”要写 `!=`，而 `not` 用在协议名和组合表达式上。
+
+## 要交付什么
+
+- 本次抓包的**分组总数**与协议分布（`Protocol Hierarchy` 截图或抄写）。
+- 挑一个报文，写出它的**四层头部**：帧、IP、TCP/UDP、应用层分别是什么协议、关键字段是什么。
+- **一个你自己写的显示过滤器**，说明它筛掉了什么、留下了什么。
 
 ## 思考题
 
-1. 浏览器与服务器之间的连接在响应后是否关闭？依据是什么？
-2. 什么是「条件 GET」？它如何减少带宽占用？
+1. 为什么抓包需要管理员权限？普通权限下 Wireshark 能做什么、不能做什么？
+2. 捕获过滤器和显示过滤器分别作用在哪个阶段？各自的优缺点是什么？
+3. 你抓到的报文里，有多少是“发给你的”？剩下的为什么会出现？
+
+## 常见问题
+
+**接口列表是空的？** 三种可能：没装 Npcap（Windows）、当前用户权限不足、网卡被虚拟机软件独占。
+
+**开始抓包后一个包都没有？** 多半选错了网卡 —— 选到 `lo`（回环）或没有流量的虚拟网卡了。
+
+**协议完全不认识？** 正常。现代网页会顺带产生 TLS、QUIC、mDNS 等一堆流量。先用显示过滤器把它收敛到你关心的协议。
+""",
+    "ws-http": """# HTTP 协议实验
+
+> 对应教材 **Chapter 2 · Application Layer** ｜ 建议 50 分钟 ｜ 难度 ★★☆
+
+## 这个实验要回答什么
+
+HTTP 请求报文和响应报文到底长什么样，每个首部字段在干什么？
+加载一个页面用了几条 TCP 连接？“条件 GET”又是怎么帮浏览器省流量的？
+
+## 开始之前
+
+**这个实验最大的坑：现在绝大多数站点都是 HTTPS，抓不到明文 HTTP。**
+
+所以不要去访问平时的网站，用专门为此存在的纯 HTTP 站点：
+
+- <http://neverssl.com> —— 这个网站存在的意义就是“永远不跳转 HTTPS”，方便抓包和连公共 Wi-Fi 认证页
+- 或者用命令行主动发一个：`curl -v http://neverssl.com/`
+
+> 说明：教材的实验文档让你打开一个叫 `http.pcap` 的抓包文件，那个文件不在本站。
+> 我们改成**自己抓一次真实的 HTTP**，步骤一样，而且过程更直观。
+
+## 实验步骤
+
+1. 建议先关掉浏览器（减少无关流量），然后打开 Wireshark、选有流量的网卡开始抓包。
+2. 用浏览器访问 **<http://neverssl.com>**（注意是 `http` 不是 `https`）。
+3. 等页面加载完，回到 Wireshark 停止捕获。
+4. 显示过滤器输入 `http`，回车。
+5. 找到第一条 **`GET / HTTP/1.1`**，在详情面板展开 `Hypertext Transfer Protocol`，记录这些字段：
+   - 请求方法（Request Method）与请求 URI
+   - `Host`、`User-Agent`、`Accept`、`Accept-Encoding`、`Connection`
+6. 找到它对应的**响应**，记录：
+   - 状态行（例如 `HTTP/1.1 200 OK`）
+   - `Content-Type`、`Content-Length`、`Cache-Control`、`Last-Modified`、`ETag`
+7. **观察条件 GET**：再访问一次同一个页面（或在地址栏回车刷新），看请求里是否出现了
+   `If-Modified-Since` 或 `If-None-Match`，以及响应是否为 **`304 Not Modified`**。
+8. **数连接**：清空过滤器，打开 `Statistics → Conversations`，切到 TCP 标签页，看这次页面加载一共开了几条 TCP 连接。
+9. （可选）观察持久连接：找同一条 `tcp.stream`，看里面是否出现了多次 HTTP 请求。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `http` | 只看 HTTP |
+| `http.request` / `http.response` | 只看请求 / 只看响应 |
+| `http.request.method == "GET"` | 指定请求方法 |
+| `http.response.code == 200` | 只看成功响应 |
+| `http.response.code == 304` | 只看“没变，用缓存”的响应 |
+| `http.host contains "neverssl"` | 按 Host 筛 |
+| `tcp.stream eq 0` | 只看某一条连接 |
+
+## 要交付什么
+
+- 一次请求与响应的**首部字段清单**（各列 5 个以上，写清字段名和值）。
+- 是否出现了条件 GET？依据是哪个字段？
+- 这次页面加载一共用了几条 TCP 连接？依据是什么？
+
+## 思考题
+
+1. HTTP/1.1 默认是持久连接，那 `Connection: close` 什么时候才会出现？
+2. 条件 GET 省下的是哪一部分流量？它省掉了响应正文，还是连请求也省了？
+3. HTTP 是无状态协议，那网站是怎么知道“你已经登录了”的？
+
+## 常见问题
+
+**过滤 `http` 出来的不是 HTTP 报文？** 有些非 HTTP 流量里也含 `http` 字样，用 `http.request` 更准。
+
+**访问的站点自动跳到 HTTPS 了？** 换成 `neverssl.com`，或者用 `curl` 显式指定 `http://`。
+
+**看不到 304？** 先正常访问一次让浏览器建立缓存，再**普通刷新**。按 Ctrl+F5 强制刷新反而不会出现 304 —— 那正是在绕过缓存。
+
+**整个页面只看到一条 GET，没有图片请求？** 说明该页面资源少或者浏览器用了缓存，刷新时按住 Shift 会更完整。
 """,
     "sock-web": """# Socket 编程练习：简易 Web 服务器
 
-> 对应教材 **Chapter 2**「Application Layer」2.7 节。
+> 对应教材 **Chapter 2**“Application Layer”2.7 节。
 
 ## 任务
 
@@ -193,13 +276,13 @@ GUIDES: dict[str, str] = {
 
 ## 判题
 
-点击「运行测试」后，判题程序会起你的服务器、分别请求 `/index.html`（期望 200）与
+点击“运行测试”后，判题程序会起你的服务器、分别请求 `/index.html`（期望 200）与
 `/missing.html`（期望 404），并比对返回的状态码。
 
 """,
     "sock-web-client": """# Socket 编程练习：Web 客户端
 
-> 对应教材 **Chapter 2**「Application Layer」2.7 节。
+> 对应教材 **Chapter 2**“Application Layer”2.7 节。
 
 ## 任务
 
@@ -211,14 +294,14 @@ GUIDES: dict[str, str] = {
 
 ## 判题
 
-点击「运行测试」后，判题程序会在 80 端口起参考服务器、运行你的客户端，并检查：
+点击“运行测试”后，判题程序会在 80 端口起参考服务器、运行你的客户端，并检查：
 - 服务器是否收到了 `/hello.html` 请求；
 - 你的客户端是否打印了 `200 OK` 状态行。
 
 """,
     "sock-pinger": """# Socket 编程练习：UDP Pinger 客户端
 
-> 对应教材 **Chapter 2**「Application Layer」2.7 节。
+> 对应教材 **Chapter 2**“Application Layer”2.7 节。
 
 ## 任务
 
@@ -227,7 +310,7 @@ GUIDES: dict[str, str] = {
 
 1. 向 `127.0.0.1:<port>` 发送 ping 报文（内容如 `Ping 1 <时间戳>`）。
 2. 循环发送 10 个 ping，每次设置 1 秒超时。
-3. 收到回显则打印「回显 + RTT」，超时则打印 `lost`。
+3. 收到回显则打印“回显 + RTT”，超时则打印 `lost`。
 
 ## 初始代码
 
@@ -235,13 +318,13 @@ GUIDES: dict[str, str] = {
 
 ## 判题
 
-点击「运行测试」后，判题程序会起参考服务器、运行你的客户端，并检查：
+点击“运行测试”后，判题程序会起参考服务器、运行你的客户端，并检查：
 - 服务器是否收到了你的 ping 报文；
 - 你的客户端是否打印了回显（含 `RTT`）。
 
 ## 提示
 
-点击编辑器右上角的「提示」按钮可以逐级查看解题提示（最后才是参考答案）。
+点击编辑器右上角的“提示”按钮可以逐级查看解题提示（最后才是参考答案）。
 
 ## 提交要求
 
@@ -249,7 +332,7 @@ GUIDES: dict[str, str] = {
 """,
     "sock-pinger-server": """# Socket 编程练习：UDP Pinger 服务器
 
-> 对应教材 **Chapter 2**「Application Layer」2.7 节。
+> 对应教材 **Chapter 2**“Application Layer”2.7 节。
 
 ## 任务
 
@@ -266,7 +349,7 @@ GUIDES: dict[str, str] = {
 
 ## 判题
 
-点击「运行测试」后，判题程序会以 UDP 客户端身份连上你的服务器、发若干 ping，并检查：
+点击“运行测试”后，判题程序会以 UDP 客户端身份连上你的服务器、发若干 ping，并检查：
 - 服务器能响应（至少 3 次回显）；
 - 回显内容正确转大写。
 
@@ -276,7 +359,7 @@ GUIDES: dict[str, str] = {
 """,
     "sock-websocket": """# 第一章引导：Ping 命令
 
-> 认识「ping 指令」与「客户端 ↔ 服务器」通信。
+> 认识“ping 指令”与“客户端 ↔ 服务器”通信。
 
 ## 做什么
 
@@ -284,7 +367,7 @@ GUIDES: dict[str, str] = {
 
     ping 127.0.0.1:8000
 
-然后点击「运行测试」。后端会在沙箱里拉起一个服务器，替你发出 `ping`，服务器回一个 `pong`。
+然后点击“运行测试”。后端会在沙箱里拉起一个服务器，替你发出 `ping`，服务器回一个 `pong`。
 
 ## 你会看到
 
@@ -294,83 +377,641 @@ GUIDES: dict[str, str] = {
 ## 想一想
 
 1. `ping` 里的 `127.0.0.1` 是什么？`8000` 又是什么？
-2. 是谁在「发 ping」，谁在「回 pong」？
+2. 是谁在“发 ping”，谁在“回 pong”？
 """,
     "ws-dns": """# DNS 协议实验
 
-> 对应教材 **Chapter 2**「Application Layer」。
+> 对应教材 **Chapter 2 · Application Layer** ｜ 建议 40 分钟 ｜ 难度 ★★☆
 
-使用 Wireshark 观察 DNS 查询与响应报文，理解域名解析过程。详细实验步骤见下方「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+浏览器里敲一个域名，到你真正连上服务器之间发生了什么？一次解析要发几个报文？
+本地 DNS 服务器、根服务器、顶级域服务器各自负责哪一段？DNS 默认走 UDP，又为什么必须保留 TCP。
+
+## 开始之前
+
+- Wireshark 能正常抓包（见入门实验）。
+- **先清空本机 DNS 缓存**，否则解析命中缓存、你一个查询报文都抓不到：
+  - Windows：`ipconfig /flushdns`
+  - macOS：`sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`
+  - Linux：`sudo resolvectl flush-caches`
+- 准备一个**你没访问过**的域名，效果最明显。
+
+## 实验步骤
+
+1. **清缓存**（见上），然后开始抓包，显示过滤器先填 `dns`，列表会只剩 DNS 报文，看着清爽。
+2. **触发一次解析**：`nslookup www.qq.com`（Windows 直接可用），或 `dig www.qq.com`。
+3. 停止捕获，找到查询报文，展开 Domain Name System，记录 Transaction ID、Questions 里的查询名与查询类型（A / AAAA / CNAME）。
+4. 找到它对应的响应报文，对比两者的 Transaction ID，在 Answers 里读出解析结果、TTL，以及是否存在 CNAME 链。
+5. **制造一次失败**：`nslookup this-name-should-not-exist-12345.com`，观察响应里的 Flags → Reply code（NXDOMAIN）。
+6. 指定服务器再查一次：`nslookup www.qq.com 8.8.8.8`，对比走的 DNS 服务器变了、报文内容有什么不同。
+7. （可选）找一个响应很大的解析，看是否出现 TC（Truncated）标志并回退到 TCP 53。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `dns` | 只看 DNS |
+| `dns.flags.response == 0` | 只看查询 |
+| `dns.flags.response == 1` | 只看响应 |
+| `dns.qry.name contains "qq"` | 按查询的域名筛 |
+| `dns.flags.rcode != 0` | 只看解析出错的 |
+| `udp.port == 53` / `tcp.port == 53` | 分别看 UDP / TCP 上的 DNS |
+
+## 要交付什么
+
+一张表，把一次完整的解析记下来（这比抄教科书有用得多）：
+
+| 项 | 查询 | 响应 |
+| --- | --- | --- |
+| 源 / 目的 IP:端口 | | |
+| Transaction ID | | |
+| 查询名 / 类型 | | |
+| 解析结果 / TTL | — | |
+
+## 思考题
+
+1. 查询和响应为什么用同一个 Transaction ID？
+2. UDP 53 和 TCP 53 分别在什么情况下用？EDNS0 又改变了什么？
+3. TTL 到期之后会发生什么？它和 DNS 的“缓存”是怎么配合的？
+
+## 常见问题
+
+**一个 DNS 报文都没抓到？** 缓存命中就不会发查询。先清缓存，或者换一个从没访问过的域名。
+
+**抓到一大堆奇怪的查询？** 那是 mDNS / LLMNR 之类的局域网设备发现在刷屏，用 `dns and ip.addr != 224.0.0.251` 排掉。
+
+**nslookup 查的好像不是我想的那个服务器？** 不加参数时它走系统配置的解析器，用 `nslookup 域名 8.8.8.8` 显式指定。
 """,
     "ws-tcp": """# TCP 协议实验
 
-> 对应教材 **Chapter 3**「Transport Layer」。
+> 对应教材 **Chapter 3 · Transport Layer** ｜ 建议 60 分钟 ｜ 难度 ★★★
 
-使用 Wireshark 观察 TCP 三次握手、可靠传输与拥塞控制。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+三次握手具体交换了什么？序号和确认号是怎么一字节一字节推进的？
+为什么发送速率要“慢启动”？丢包和重传在抓包里长什么样？
+
+## 开始之前
+
+- 抓包位置要在**你本机**和你访问的服务器之间（本机抓包就是你发出的和收到的）。
+- 想看清拥塞行为，**下载一个大文件**是最有效的办法：数据多、速率变化明显。
+- 用 `curl` 比浏览器干净（浏览器会有预连接、缓存、多条并发流来干扰）。
+
+## 实验步骤
+
+1. 开始抓包，显示过滤器填 `tcp`（想更聚焦就 `tcp.port == 80`）。
+2. 用命令行下载一个大文件，例如 `curl -o /dev/null http://speedtest.tele2.net/10MB.zip`。
+3. 停止捕获，找到开头的 **SYN → SYN/ACK → ACK** 三条报文，记录双方的初始序号与窗口大小（Window Size）。
+4. 打开 `Statistics → Flow Graph`，把 `tcp.stream` 对应的那条流画出来，直观看到报文往返与时序。
+5. 挑一个数据段，对照它的 Sequence Number 与 Acknowledgement Number，验证“确认号 = 期望收到的下一个字节序号”。
+6. 打开 `Statistics → TCP Stream Graphs → Time Sequence (Stevens)`，看吞吐随时间上升的过程（慢启动 → 拥塞避免）。
+7. 找重传：过滤器 `tcp.analysis.retransmission`。没出现说明网络太好，可换弱网（手机热点 / 限速）再试。
+8. 看连接如何结束：找 FIN/ACK 四次挥手；如果突然中断，会看到 RST。
+9. （可选）找零窗口：`tcp.analysis.zero_window`，说明接收方处理不过来、让发送方暂停。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `tcp` | 只看 TCP |
+| `tcp.flags.syn == 1 and tcp.flags.ack == 0` | 所有握手请求 |
+| `tcp.stream eq 0` | 只看第 0 条流（包太多时的救命过滤器） |
+| `tcp.analysis.retransmission` | 重传 |
+| `tcp.analysis.zero_window` | 零窗口通告 |
+| `tcp.window_size < 1000` | 窗口很小的时候 |
+| `tcp.flags.reset == 1` | 连接被重置 |
+
+## 要交付什么
+
+- 握手三条报文各自的标志位与序号/确认号。
+- 该连接的吞吐随时间的变化描述（哪一段涨得快、哪一段平了）。
+- 有没有出现重传 / 零窗口，出现时前后各发生了什么。
+
+## 思考题
+
+1. 初始序号为什么是随机的，而不是从 0 开始？
+2. 确认号为 N 时，它确认的到底是哪个字节？
+3. 快速重传为什么要等到 3 个重复 ACK，而不是 1 个？
+
+## 常见问题
+
+**抓到的全是加密流量，看不到 HTTP？** 现在多数站点是 HTTPS。TCP 这一层照样能看（握手、序号、窗口、重传都不受影响），只是应用层内容需要解密，见 SSL 实验。
+
+**抓不到握手？** 你开始抓包之前连接已经建好了。重新发起一次连接。
+
+**包太多根本看不过来？** 用 `tcp.stream eq N` 只留一条流；`Statistics → Conversations` 可以查出每条流的编号。
 """,
     "ws-udp": """# UDP 协议实验
 
-> 对应教材 **Chapter 3**「Transport Layer」。
+> 对应教材 **Chapter 3 · Transport Layer** ｜ 建议 40 分钟 ｜ 难度 ★★☆
 
-使用 Wireshark 观察 UDP 报文结构与无连接传输特性。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+UDP 头部比 TCP 少了什么？为什么 DNS、QUIC、实时音视频都选 UDP？
+一个“无连接”的协议，抓包里看到的是什么样子？
+
+## 开始之前
+
+- UDP 没有连接建立过程，抓到的是一堆互不相关的报文，所以要**主动制造几个典型场景**：
+  - DNS 查询（端口 53）—— 最容易复现
+  - QUIC（HTTP/3，端口 443/UDP）—— 用浏览器访问支持 HTTP/3 的站点
+  - 自己发包：Linux/macOS 用 `nc -u`，Windows 可用 PowerShell 的 `UdpClient`
+- 注意 `ping` **不产生 UDP**（它走的是 ICMP），别用它来制造 UDP 流量。
+
+## 实验步骤
+
+1. 开始抓包，显示过滤器填 `udp`。
+2. 触发流量：`nslookup www.baidu.com`，再让浏览器访问一个支持 HTTP/3 的网站。
+3. 点开一个 UDP 报文，记录四个头部字段：Source Port、Destination Port、Length、Checksum。
+4. **核对 Length**：UDP 长度 = 8 字节头部 + 数据长度。用下面的报文总长反推数据部分有多长，验证字段值对不对。
+5. 找一个 DNS 响应，看它的 UDP 长度有没有超过 512 字节，有没有被分片。
+6. 把显示过滤器换成 `udp.port == 53`，只留 DNS，统计这次一共发了几个查询、收到几个响应。
+7. 找 QUIC 流量：过滤器 `quic`，对比它和普通 UDP 在 Wireshark 里显示上的差别（Wireshark 会把它识别成 QUIC 而不是裸 UDP）。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `udp` | 只看 UDP |
+| `udp.port == 53` | DNS |
+| `udp.length > 512` | 较大的 UDP 报文 |
+| `dns` / `quic` | 按应用层协议识别 |
+| `udp.stream eq 0` | 只看一组收发 |
+| `udp and not quic` | 排除 QUIC，只看“裸”UDP |
+
+## 要交付什么
+
+- 这次抓包里 UDP 报文按目的端口的分布（哪些协议在用 UDP）。
+- 选一个报文，写出四个头部字段的值，并用报文总长验证 Length 字段。
+
+## 思考题
+
+1. UDP 校验和是“可选”的，为什么可以不要？IPv4 里怎么表示“没有算校验和”？
+2. IPv6 里 UDP 校验和还是可选的吗？
+3. DNS 超过 512 字节时为什么要考虑换 TCP，而不是让 UDP 分片？
+
+## 常见问题
+
+**UDP 报文很少？** 很多基于 UDP 的应用都加了密，Wireshark 里看起来只是乱码。用 DNS 和 QUIC 最容易观察。
+
+**想看“裸 UDP”但全被识别成 QUIC？** 新版 Wireshark 会自动把 443/UDP 认成 QUIC，用 `udp and not quic` 排掉。
+
+**抓到的 UDP 长度都是 0 或很小？** 那是空载荷的保活 / 探测报文，找数据报文再看。
 """,
     "ws-ip": """# IP 协议实验
 
-> 对应教材 **Chapter 4**「Network Layer」。
+> 对应教材 **Chapter 4 · Network Layer: Data Plane** ｜ 建议 50 分钟 ｜ 难度 ★★★
 
-使用 Wireshark 观察 IP 数据报头部字段与分片。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+IP 数据报头里每个字段到底干什么用？TTL 怎么防止环路？
+数据报什么时候会分片？IPv4 和 IPv6 的头部差在哪里？
+
+## 开始之前
+
+- 抓包位置决定了你能看到什么：在你自己机器上抓，看到的是“原始发送 + 最终接收”的包，地址不会中间变化。
+- 想看到 TTL 递减的效果，需要 `tracert` / `traceroute` 帮忙。
+
+## 实验步骤
+
+1. 开始抓包，显示过滤器填 `ip`。
+2. 另开一个终端执行 `ping 1.1.1.1`（Windows：`ping -n 4 1.1.1.1`），产生一批 IP 报文。
+3. 停止捕获，挑一个报文展开 Internet Protocol Version 4，逐个记录：
+   Version、Header Length、Total Length、Identification、Flags、Fragment offset、TTL、Protocol、Header checksum、Source / Destination Address。
+4. **验证字段单位**：Header Length 的单位是 4 字节（值为 5 就是 20 字节），Total Length 的单位是 1 字节。用它们核对“头部 + 数据 = 总长”。
+5. 看 Protocol 字段的值（1=ICMP、6=TCP、17=UDP），对照你在列表里看到的协议名。
+6. 执行 `tracert -d 1.1.1.1`（Linux/macOS：`traceroute -n 1.1.1.1`），观察 TTL 从 1 开始递增，以及沿途路由器回的 ICMP 超时报文。
+7. **找分片**：过滤器 `ip.flags.mf == 1 or ip.fragment.offset > 0`。现代网络大多不会分片，可以主动制造：
+   `ping -l 2000 1.1.1.1`（Windows）/ `ping -s 2000 1.1.1.1`（Linux/macOS）。
+8. （可选）过滤器换 `ipv6`，对比 IPv6 头部：固定 40 字节、没有首部校验和、路由器不分片。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `ip` | 只看 IPv4 |
+| `ip.addr == 1.1.1.1` | 与某个地址有关的全部报文 |
+| `ip.ttl < 10` | TTL 较小的（快到目的地或经过很多跳） |
+| `ip.flags.df == 1` | 设置了“不分片” |
+| `ip.flags.mf == 1` | 后面还有分片 |
+| `ip.fragment.offset > 0` | 非首片分片 |
+| `ipv6` | 只看 IPv6 |
+
+## 要交付什么
+
+- 一个 IPv4 报文的**完整头部字段表**（每个字段的值 + 它代表什么）。
+- TTL 值与 `tracert` 跳数的对应关系，说明 TTL 主要用来做什么。
+- 有没有观察到分片？如果有，分片之间靠什么字段重组？
+
+## 思考题
+
+1. TTL 字面意思是“秒”，实际按什么递减？
+2. IPv6 为什么去掉了首部校验和？这样做有什么代价？
+3. 分片在哪里重组？为什么路由器默认不分片（IPv6 直接禁止）？
+
+## 常见问题
+
+**看不到分片？** 正常。路径 MTU 发现和 MSS 协商已经避免了大包分片。用 `ping -l 2000` 之类的超大包强制制造。
+
+**只看到本机收发的包，看不到别人的？** 正常，除非你所在交换机配了镜像端口，否则抓不到别人的流量。
+
+**Header Length 一直是 5？** 没有 IP 选项时就是 5（20 字节），这是最常见的值。
 """,
     "ws-icmp": """# ICMP 协议实验
 
-> 对应教材 **Chapter 5**「Network Layer: Control Plane」5.6 节。
+> 对应教材 **Chapter 5 · Network Layer: Control Plane** 5.6 节 ｜ 建议 40 分钟 ｜ 难度 ★★☆
 
-使用 Wireshark 观察 ICMP 差错报告与 Ping/Traceroute 报文。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+`ping` 和 `traceroute` 底层发的都是 ICMP，分别是哪种类型？
+路由器回差错报文时带回了多少原始信息，为什么这些信息足够让 traceroute 工作？
+
+## 开始之前
+
+- 需要能对外发包（普通家用网络就行）。
+- 有些网络或目标会禁 ICMP，某次 ping 不通不代表实验做不了，换一个目标即可。
+
+## 实验步骤
+
+1. 开始抓包，显示过滤器填 `icmp`。
+2. 执行 `ping 1.1.1.1`（Windows：`ping -n 4 1.1.1.1`），停止捕获。
+3. 找到成对的 **Echo Request（Type 8）** 与 **Echo Reply（Type 0）**，记录 Identifier、Sequence Number、Data 长度，以及 Wireshark 算出的往返时间。
+4. 看数据部分的内容：`ping` 默认填的是一串递增模式，这也是它能检测出数据损坏的原因。
+5. 执行 `tracert -d 1.1.1.1`（Linux/macOS：`traceroute -n 1.1.1.1`），你会看到每一跳回来的 **Time-to-live exceeded（Type 11）**。
+6. 展开一个 Time exceeded 报文，往里看它的 IP 载荷：里面装着**被丢弃那个包的 IP 头 + 前 8 字节**。这正是 traceroute 能知道“这一跳是谁”的原因。
+7. 制造一次不可达：`ping 1.1.1.1 -i 1`（或访问一个不存在的端口），观察 **Destination unreachable（Type 3）** 及其 Code 字段的取值。
+8. 统计：这次抓包中 ICMP 各类型的数量分布。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `icmp` | 只看 ICMP（不含 ICMPv6） |
+| `icmp.type == 8` / `== 0` | Echo 请求 / 应答 |
+| `icmp.type == 11` | TTL 超时 |
+| `icmp.type == 3` | 目的不可达 |
+| `icmp.ident == 0x1234` | 按 Identifier 认出发起方 |
+| `icmpv6` | ICMPv6（另一套，别和 ICMP 混） |
+
+## 要交付什么
+
+- `ping` 的往返统计：发了几个、回了几个、各自 RTT。
+- `tracert` 每一跳的 IP 与回包类型（哪些是 Type 11、哪一跳是 Type 0）。
+- 差错报文里携带的原始信息具体是什么，为什么只需要这么少。
+
+## 思考题
+
+1. traceroute 是怎么知道每一跳的地址的？它靠的是谁的“错误”？
+2. 为什么有的跳显示为 `*`？这时发生了什么？
+3. ICMP 差错报文只带原始 IP 头 + 8 字节，够用吗？为什么不做成带回整包？
+
+## 常见问题
+
+**ping 不通，但抓到了 Request 没有 Reply？** 目标或中间设备禁了 ICMP，这是很常见的策略，换个目标即可。
+
+**`tracert` 特别慢？** 每一跳都要等超时确认，属正常。加 `-d` 关掉反向解析会快一些。
+
+**过滤器 `icmp` 抓不到 IPv6 的报文？** ICMPv6 是独立协议，用 `icmpv6`。
 """,
     "ws-dhcp": """# DHCP 协议实验
 
-> 对应教材 **Chapter 4**「Network Layer」。
+> 对应教材 **Chapter 4 · Network Layer: Data Plane** ｜ 建议 40 分钟 ｜ 难度 ★★☆
 
-使用 Wireshark 观察 DHCP 发现/提供/请求/确认四步过程。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+一台新机器插上网线后，是怎么自动拿到 IP、网关和 DNS 的？
+四步交互各自解决什么问题？为什么客户端一开始得用 `0.0.0.0` 当源地址？
+
+## 开始之前
+
+- 这个实验需要你能**触发一次 DHCP 交互**：
+  - 笔记本连 Wi-Fi / 网线时最方便（可以直接断开重连）
+  - 云服务器、大部分虚拟机里抓不到（地址由平台下发），这种情况请看实验文档里给出的官方 trace
+- 记住当前网络配置，方便之后对比。
+
+## 实验步骤
+
+1. 先记下当前配置：`ipconfig /all`（Windows）或 `ip addr` + `ip route`（Linux）。
+2. 开始抓包，显示过滤器填 `bootp`（Wireshark 里 DHCPv4 的协议名就是 BOOTP）。
+3. **释放并重新获取**：
+   - Windows：`ipconfig /release` 然后 `ipconfig /renew`
+   - Linux：`sudo dhclient -r && sudo dhclient -1`
+   - 或者干脆断开 Wi-Fi 再重连
+4. 停止捕获，找到四条报文：**Discover → Offer → Request → ACK**（看 Options 里的 DHCP Message Type）。
+5. 看 Discover 的地址与端口：源 `0.0.0.0:68`，目的 `255.255.255.255:67`。想清楚“还没有 IP 的机器是怎么把包发出去的”。
+6. 在 Offer / ACK 里展开 Option，逐条记录：Subnet Mask(1)、Router(3)、DNS(6)、Lease Time(51)、Server Identifier(54)。
+7. 对比第 1 步记下的配置，确认它们就是从这里来的。
+8. （可选）看一次续租：租期过半时客户端会单播发 Request，服务器回 ACK，这次没有 Discover/Offer。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `bootp` | 只看 DHCPv4 |
+| `bootp.option.dhcp == 1` | Discover |
+| `bootp.option.dhcp == 2` | Offer |
+| `bootp.option.dhcp == 3` | Request |
+| `bootp.option.dhcp == 5` | ACK |
+| `udp.port == 67 or udp.port == 68` | 按端口筛 |
+
+## 要交付什么
+
+- 四步报文的源 / 目的 IP 与端口对照表。
+- 从 Offer 里拿到的完整网络配置（掩码、网关、DNS、租期）。
+- 租期是多长？客户端会在什么时候开始续租？
+
+## 思考题
+
+1. 为什么 Discover 用 `0.0.0.0` 作源地址、用广播作目的地址？
+2. Offer 之后为什么还要一次 Request？它在确认什么？
+3. 如果局域网里接了两台 DHCP 服务器，会发生什么？
+
+## 常见问题
+
+**抓不到 `bootp`？** 说明所在网络不需要 DHCP（比如平台直通、静态配置），换成手机热点或家里路由器重试。
+
+**只看到 ACK，看不到前三条？** 抓包开始得太晚了。先开始抓包，再去 renew。
+
+**Linux 上没有 `dhclient`？** 用 `sudo networkctl reconfigure <接口>`，或者直接重连网卡。
 """,
     "ws-nat": """# NAT 实验
 
-> 对应教材 **Chapter 4**「Network Layer」。
+> 对应教材 **Chapter 4 · Network Layer: Data Plane** ｜ 建议 50 分钟 ｜ 难度 ★★★
 
-使用 Wireshark 观察 NAT 对内外网地址的转换。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+家里只有一个公网 IP，为什么手机、电脑、电视能同时上网？
+NAT 表里到底存了什么？为什么外面的机器主动连不进来？
+
+## 开始之前
+
+**这个实验需要两条路，先看清楚：**
+
+- **自己在机器上抓包，只能看到改写后的一侧。** 因为地址改写在路由器内部完成，你自己这台机器看不到转换过程。
+- **要看完整的改写过程，需要同时抓到 NAT 两侧的官方 trace**（教材提供的抓包文件里就有）：
+  下载地址 <https://www-net.cs.umass.edu/wireshark-labs/wireshark-traces.zip>，
+  具体用哪个文件以你正在读的实验文档为准。
+
+另外注意：**私网地址段**是 `10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16` —— 认得出这个，你就能一眼分出哪侧是内网。
+
+## 实验步骤
+
+**A. 自己抓包，先建立直觉**
+
+1. 记下自己的内网地址：`ipconfig`（Windows）或 `ip addr`（Linux/macOS），通常是 `192.168.x.x`。
+2. 查自己的公网地址：浏览器打开 <https://ifconfig.me>，或 `curl ifconfig.me`。
+3. 开始抓包，显示过滤器填 `ip.addr == <你的内网IP>`，然后访问一个网站。
+4. 观察你发出的包：**源 IP 就是你的内网地址** —— 说明改写发生在路由器上，你这侧是看不到的。
+
+**B. 用官方 trace 看改写**
+
+5. 打开 trace 里 NAT 实验对应的抓包文件，找到**内网侧**与**公网侧**同一时刻的同一个连接（看端口号和时序能对上）。
+6. 对比两侧的 源 IP:端口 与 目的 IP:端口，填出下面这张 NAT 转换表。
+7. 用 `Statistics → Conversations` 看：这个公网 IP 上同时承载了多少条内网连接？
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `ip.addr == 192.168.1.100` | 锁定内网那台机器 |
+| `tcp.flags.syn == 1 and tcp.flags.ack == 0` | 每次新建连接（最容易看出端口分配规律） |
+| `tcp.port == 80` | 只看某个服务的连接 |
+| `ip.src == 203.0.113.5` | 只看某个地址发出的包 |
+
+## 要交付什么
+
+| 方向 | 内网侧 | 公网侧 |
+| --- | --- | --- |
+| 源 IP:端口 | | |
+| 目的 IP:端口 | | |
+
+再补一句话：这个公网 IP 同时承载了多少条内网连接，NAT 靠什么区分它们。
+
+## 思考题
+
+1. NAT 为什么必须改写端口，只改 IP 不行吗？
+2. NAT 对 P2P 下载、对外提供服务意味着什么？为什么需要打洞或端口映射？
+3. 为什么说 NAT“破坏了端到端原则”？它带来了什么好处作为交换？
+
+## 常见问题
+
+**自己抓包看不到任何地址改写？** 这是正常的，改写发生在路由器内部。要看改写过程必须用官方 trace（同时有两侧抓包）。
+
+**官方 trace 里找不到实验文档说的那个文件？** 以文档里给出的文件名为准；trace 包里同时包含多个实验的文件。
+
+**分不清哪侧是内网、哪侧是公网？** 看地址：私网地址（`10.` / `172.16-31.` / `192.168.`）那侧就是内网。
 """,
     "ws-ethernet-arp": """# 以太网与 ARP 实验
 
-> 对应教材 **Chapter 6**「The Link Layer and LANs」。
+> 对应教材 **Chapter 6 · The Link Layer and LANs** ｜ 建议 50 分钟 ｜ 难度 ★★★
 
-使用 Wireshark 观察以太网帧结构与 ARP 地址解析过程。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+以太网帧头里那 6+6 字节的 MAC 地址是哪来的？
+IP 地址是怎么“翻译”成 MAC 的？为什么 ARP 请求必须广播，而响应可以单播？
+
+## 开始之前
+
+- 需要你和至少一台设备处于**同一个广播域**（家里路由器、实验室交换机都可以）。
+- 查 ARP 缓存的命令：
+  - Windows：`arp -a`
+  - Linux：`ip neigh`
+  - macOS：`arp -a`
+
+## 实验步骤
+
+1. 先看当前 ARP 缓存（命令见上），**记下网关的 MAC 地址**。
+2. 开始抓包，显示过滤器填 `arp`。
+3. **清掉网关那条缓存**，制造一次真正的 ARP：
+   - Windows（管理员）：`arp -d <网关IP>`
+   - Linux：`sudo ip neigh del <网关IP> dev <网卡名>`
+4. 立刻 `ping <网关IP>`，触发地址解析。
+5. 停止捕获，找到 **Request**：目的 MAC 是 `ff:ff:ff:ff:ff:ff`（广播），Target MAC 全 0（还不知道答案）。
+6. 找到 **Reply**：它是单播回来的，在里面对比第 1 步记下的网关 MAC，确认一致。
+7. 把过滤器换成 `eth`，点开任意一帧，记录帧头：目的 MAC、源 MAC、Type。对照 Type 取值：`0x0800`=IPv4、`0x0806`=ARP、`0x86dd`=IPv6。
+8. （可选）找一次“免费 ARP”（gratuitous ARP）：某台设备主动广播自己的映射关系，用于检测地址冲突或宣告变更。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `arp` | 只看 ARP |
+| `arp.opcode == 1` / `== 2` | 请求 / 响应 |
+| `eth.dst == ff:ff:ff:ff:ff:ff` | 所有广播帧 |
+| `eth.type == 0x0806` | 按类型筛 ARP |
+| `eth.src == <MAC>` | 锁定某台设备 |
+
+## 要交付什么
+
+- 一对 ARP 请求 / 响应的全字段（含各地址字段的值）。
+- 一个以太网帧的头部字段，以及 Type 值的含义。
+- 清缓存前后网关 MAC 的比对结果。
+
+## 思考题
+
+1. 为什么 ARP 请求必须广播？能不能先查表再单播？
+2. 如果 ARP 表项永不过期，会出现什么问题？
+3. **跨网段**通信时，你发出的帧的目的 MAC 是谁的？为什么不是最终服务器的？
+
+## 常见问题
+
+**`arp -d` 提示权限不足？** 需要管理员 / root。
+
+**清完缓存 ping 一下，还是没看到 ARP？** 顺序问题：先开始抓包，再清缓存，然后马上 ping。
+
+**抓到大量 IPv6 的邻居请求 / 通告？** 那是 ARP 在 IPv6 里的对应物（Neighbor Solicitation / Advertisement），用 `icmpv6` 看，属正常现象。
 """,
     "ws-80211": """# 802.11 无线局域网实验
 
-> 对应教材 **Chapter 7**「Wireless and Mobile Networks」。
+> 对应教材 **Chapter 7 · Wireless and Mobile Networks** ｜ 建议 60 分钟 ｜ 难度 ★★★
 
-使用 Wireshark 观察 802.11 帧结构与无线局域网通信。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+802.11 帧和以太网帧差在哪里？为什么无线链路层要单独做确认（ACK）？
+一个数据帧从空口上看，完整的样子是什么？
+
+## 开始之前
+
+**先说清楚现实条件：抓 802.11 需要网卡支持监听模式（monitor mode）。**
+
+- Linux + 支持监听的网卡：可以真抓（下面 A 路线）。
+- Windows / macOS 的普通网卡：**抓不到管理帧**，系统只给你“伪以太网”帧。这时请走 B 路线。
+- A 路线不可用完全不影响做这个实验，B 路线本身就是教材的经典做法。
+
+**官方 trace**：<https://www-net.cs.umass.edu/wireshark-labs/wireshark-traces.zip>
+（用哪个文件以你正在读的实验文档为准。）
+
+## 实验步骤
+
+**A. 有监听条件的（Linux，进阶）**
+
+1. 把网卡切到监听模式：`sudo airmon-ng start wlan0`（会多出一个 `wlan0mon`）。
+2. 在 Wireshark 里选监听接口开始抓包，显示过滤器填 `wlan`。
+3. 用手机连一下 Wi-Fi、打开网页，制造真实流量。
+4. 观察三类帧：管理帧（Beacon / Probe / Auth / Assoc）、控制帧（ACK / RTS / CTS）、数据帧。
+
+**B. 用官方 trace（推荐，绝大多数人走这条）**
+
+5. 打开 802.11 实验对应的抓包文件，过滤器 `wlan.fc.type == 0` 只看管理帧。
+6. 找一个 **Beacon** 帧（`wlan.fc.subtype == 8`），记录：SSID、支持速率、信道、Beacon interval。
+7. 过滤器换成 `wlan.fc.type == 1` 看控制帧，找 **ACK**（subtype 12）。
+   想清楚一件以太网没有的事：**无线的每个单播数据帧都要单独被确认**。
+8. 过滤器换成 `wlan.fc.type == 2` 看数据帧，展开 802.11 头，和以太网头对比：
+   它最多有 **4 个地址字段**（Address 1/2/3/4）、还有 Duration 与 Sequence Control。
+9. 如果抓包带 **radiotap** 头，记录信道、信号强度（dBm）、数据率 —— 这是无线特有的“物理层元信息”。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `wlan` | 只看 802.11 |
+| `wlan.fc.type == 0` / `== 1` / `== 2` | 管理 / 控制 / 数据帧 |
+| `wlan.fc.subtype == 8` | Beacon |
+| `wlan.fc.subtype == 12` | ACK |
+| `wlan.ssid == "你的SSID"` | 按 SSID 筛 |
+| `radiotap.channel.freq` | 按信道频点筛 |
+
+## 要交付什么
+
+- 一个 Beacon 帧的字段表（SSID、速率、信道、间隔）。
+- 一对“数据帧 + 独立 ACK”，说明它和以太网“不确认”的差别。
+- 802.11 头比以太网头多出来的字段，以及各地址字段分别在什么场景下使用。
+
+## 思考题
+
+1. 为什么 802.11 需要链路层 ACK，而以太网不需要？
+2. RTS/CTS 解决的是什么问题？它有什么代价？
+3. 四个地址字段分别在什么拓扑下才会用到？
+
+## 常见问题
+
+**接口列表里没有监听接口？** 网卡或驱动不支持监听模式，走官方 trace 即可，实验效果一样。
+
+**抓到的全是 Beacon，没有数据帧？** 没制造流量，或者信道不对（监听要落在设备实际用的信道上）。
+
+**Windows 上看到的帧“不像 802.11”？** 系统会把无线帧转成伪以太网帧再交给抓包程序，所以看不到 802.11 头。这也是为什么推荐用官方 trace。
 """,
-    "ws-ssl": """# SSL 安全实验
+    "ws-ssl": """# SSL / TLS 安全实验
 
-> 对应教材 **Chapter 8**「Security」。
+> 对应教材 **Chapter 8 · Security in Computer Networks** ｜ 建议 60 分钟 ｜ 难度 ★★★
 
-使用 Wireshark 观察 SSL/TLS 握手与加密通信。详细实验步骤见「作业要求文档」（PDF）。
+## 这个实验要回答什么
+
+TLS 握手到底交换了什么？为什么抓到包里看不到明文？
+TLS 1.3 相比 1.2 在抓包上有什么明显变化？加密保护了哪些信息、又暴露了哪些？
+
+## 开始之前
+
+- 用 `curl` 最干净（浏览器会并发多条连接、还有连接复用）。
+- 想看明文内容，需要让客户端**导出会话密钥**（见步骤 7），这是唯一正当的“解密”方式。
+
+## 实验步骤
+
+1. 开始抓包，显示过滤器填 `tls`（老版本 Wireshark 里叫 `ssl`，两个都试）。
+2. 发起一个 HTTPS 请求：`curl -v https://www.example.com`，或浏览器访问任意 HTTPS 站点。
+3. 停止捕获，找到 **Client Hello**，记录：TLS 版本、支持的密码套件列表、SNI（明文里的域名）、ALPN（有没有 `h2`）。
+4. 找到 **Server Hello**，记录：服务器选中的密码套件、协商出的版本、服务器随机数。
+5. 看握手之后的内容，注意这个关键差别：
+   - **TLS 1.2**：还能看到 Certificate 明文，能看到证书链与公钥。
+   - **TLS 1.3**：Certificate 已经被加密，你只能看到 Application Data。
+6. 数一下握手需要几个往返：TLS 1.2 通常 2-RTT，TLS 1.3 只要 1-RTT（会话恢复甚至 0-RTT）。
+7. **（强烈推荐）解密看看**：让客户端导出密钥，Wireshark 就能还原明文。
+   - Linux / macOS：`export SSLKEYLOGFILE=~/keys.log`，然后**从同一个终端**启动浏览器或用 curl。
+   - Windows：设置用户环境变量 `SSLKEYLOGFILE`，然后重启浏览器。
+   - Wireshark：`Preferences → Protocols → TLS → (Pre)-Master-Secret log filename` 选中该文件。
+   - 顺序很重要：**先开抓包 → 设好变量 → 启动浏览器 → 访问**，只有这次会话的密钥能解这次抓包。
+8. 解密之后回看一遍：体会 TLS 保护的是**内容**，而 IP、端口、SNI、报文大小与时序这些**元数据仍然暴露**。
+
+## 过滤器速查
+
+| 过滤器 | 作用 |
+| --- | --- |
+| `tls` | 只看 TLS |
+| `tls.handshake.type == 1` | Client Hello |
+| `tls.handshake.type == 2` | Server Hello |
+| `tls.handshake.extensions_server_name` | 带 SNI 的握手报文 |
+| `tls.record.content_type == 23` | Application Data（加密内容） |
+| `tcp.port == 443` | 按端口筛 |
+
+## 要交付什么
+
+- 一次握手的报文顺序表（谁先发、发了什么类型）。
+- Client Hello 里的密码套件候选与 SNI；Server Hello 里选中的那一个。
+- 能否看到 Certificate？对应的是哪个 TLS 版本？
+- 解密前 / 解密后分别能看到什么，列一张对照表。
+
+## 思考题
+
+1. TLS 保护了哪些信息？哪些信息在加密通道之外仍然可见？
+2. TLS 1.3 为什么把证书也加密了？这给网络管理带来了什么影响？
+3. 如果服务器启用了 ECH（Encrypted Client Hello），SNI 还看得到吗？
+
+## 常见问题
+
+**过滤器 `ssl` 提示无效？** 新版改名成了 `tls`，用 `tls`；两者都试一下最快。
+
+**看不到 Certificate？** 说明你走的是 TLS 1.3，证书已被加密 —— 这是正常的，也是这个实验该观察到的结论之一。
+
+**设了 `SSLKEYLOGFILE` 但解密不生效？** 三个常见原因：变量是在浏览器**启动之后**才设的；抓包与密钥不是同一次会话；Wireshark 里没指定密钥文件路径。
+
+**抓到的全是 QUIC 没有 TLS？** HTTP/3 走 UDP，用 `quic` 过滤器看。
 """,
     "sock-smtp": """# Socket 编程练习：SMTP 邮件客户端
 
-> 对应教材 **Chapter 2**「Application Layer」2.7 节。
+> 对应教材 **Chapter 2**“Application Layer”2.7 节。
 
-实现一个 SMTP 客户端，通过 socket 连接邮件服务器并完成邮件投递。详细要求见「作业要求文档」（PDF）。
+实现一个 SMTP 客户端，通过 socket 连接邮件服务器并完成邮件投递。详细要求见“作业要求文档”（PDF）。
 """,
     "sock-proxy": """# Socket 编程练习：Web 代理服务器
 
-> 对应教材 **Chapter 2**「Application Layer」2.7 节。
+> 对应教材 **Chapter 2**“Application Layer”2.7 节。
 
-实现一个 Web 代理服务器，转发客户端 HTTP 请求。详细要求见「作业要求文档」（PDF）。
+实现一个 Web 代理服务器，转发客户端 HTTP 请求。详细要求见“作业要求文档”（PDF）。
 """,
     "sock-icmp": """# Socket 编程练习：ICMP Ping 客户端
 
-> 对应教材 **Chapter 5**「Network Layer: Control Plane」5.6 节。
+> 对应教材 **Chapter 5**“Network Layer: Control Plane”5.6 节。
 
 ## 任务
 
@@ -387,7 +1028,7 @@ GUIDES: dict[str, str] = {
 
 ## 判题
 
-点击「运行测试」后，判题程序会对你的代码做**静态校验**：检查是否创建了原始套接字、
+点击“运行测试”后，判题程序会对你的代码做**静态校验**：检查是否创建了原始套接字、
 是否正确构造了 ICMP 报文头与校验和、是否完成了收发逻辑，并校验 `checksum` 函数的输出
 与参考答案一致。
 
@@ -403,7 +1044,7 @@ GUIDES: dict[str, str] = {
 }
 
 # --------------------------------------------------------------------------
-# 分级提示（前端「提示」按钮逐级揭示；下标顺序即揭示顺序，最后一步之前都是引导）
+# 分级提示（前端“提示”按钮逐级揭示；下标顺序即揭示顺序，最后一步之前都是引导）
 # --------------------------------------------------------------------------
 
 HINTS: dict[str, list[str]] = {

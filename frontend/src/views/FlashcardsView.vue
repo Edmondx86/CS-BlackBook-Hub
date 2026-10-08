@@ -13,7 +13,7 @@ const route = useRoute()
 const chapterId = computed(() => route.params.chapterId)
 const slug = computed(() => route.params.slug)
 
-// 章节概览：用于左侧导航列出本章的实验，以及判断「上手做实验」的跳转目标。
+// 章节概览：用于左侧导航列出本章的实验，以及判断“上手做实验”的跳转目标。
 // 与导航共用同一份缓存（见 composables/useChapter.js），不会重复请求。
 const chapter = useChapter(chapterId)
 
@@ -38,7 +38,7 @@ const ctaTarget = computed(() => {
   return ''
 })
 
-// 卡片 Markdown 按需加载：按“chapterId-slug”建立「文件名 -> 动态 import」映射
+// 卡片 Markdown 按需加载：按“chapterId-slug”建立“文件名 -> 动态 import”映射
 // （文件名 ch1-flashcardsN.md -> ch1-flashcardsN）。
 //
 // 这里刻意不用 eager: true —— 51 张卡片的正文合计约 250 kB，全量内联会让本页 chunk

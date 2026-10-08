@@ -8,9 +8,9 @@
 设计取舍
 --------
 - 纯进程内实现，不引入 Redis 等外部依赖：uvicorn 单 worker 时完全有效。
-  若将来改成多 worker，每个 worker 各持一份计数，实际限额会放大到「限额 × worker 数」，
+  若将来改成多 worker，每个 worker 各持一份计数，实际限额会放大到“限额 × worker 数”，
   届时要么按 worker 数下调限额，要么换成共享存储。
-- 客户端 IP 取自 ``X-Forwarded-For``。**这只在「后端不直接对外暴露、仅由 nginx 反代」
+- 客户端 IP 取自 ``X-Forwarded-For``。**这只在“后端不直接对外暴露、仅由 nginx 反代”
   的前提下可信**（compose 已去掉后端的 ports 发布，只留 expose）。若后端能被直连，
   请求方可以伪造该头绕过限流。
 """

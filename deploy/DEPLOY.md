@@ -12,7 +12,7 @@
 ### 0.1 域名备案（⚠️ 中国大陆节点必做，否则 80/443 直接被拦）
 
 阿里云**中国大陆地域**的服务器，域名解析过去后，**必须完成 ICP 备案**，
-否则运营商侧会拦截 80/443 的 Web 访问 —— 表现是「DNS 能解析、但浏览器打不开、curl 超时」，
+否则运营商侧会拦截 80/443 的 Web 访问 —— 表现是“DNS 能解析、但浏览器打不开、curl 超时”，
 很容易误判成 nginx 配错了。
 
 ```bash
@@ -21,7 +21,7 @@ ping csblackbookhub.com        # 或 nslookup csblackbookhub.com
 ```
 
 * 服务器在**中国大陆**（如华北/华东/华南）：去阿里云备案控制台确认 `csblackbookhub.com`
-  的备案状态为「已备案」，且**接入商是阿里云**。没备案就先备案，这一步没法绕过。
+  的备案状态为“已备案”，且**接入商是阿里云**。没备案就先备案，这一步没法绕过。
 * 服务器在**香港/新加坡等境外地域**：不需要备案，可跳过本节。
 
 ### 0.2 DNS 解析
@@ -78,7 +78,7 @@ bwrap --unshare-user --ro-bind / / --dev /dev true && echo "bwrap 可用"
 
 如果上面报错（常见于 Ubuntu 23.10+ 的 `kernel.apparmor_restrict_unprivileged_userns=1`），
 有两个选择：临时放开设限 `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`，
-或接受退化为「systemd 沙箱 + iptables 出站封锁」这一层。判题仍能工作，
+或接受退化为“systemd 沙箱 + iptables 出站封锁”这一层。判题仍能工作，
 但会失去命名空间隔离（后端日志里会有明确的 warning）。
 
 ---
@@ -184,7 +184,7 @@ curl -sI http://127.0.0.1:8000/static/docs/ws-tcp.pdf | head -1     # 期望 HTT
 
 漏传了也不要紧，但要知道症状：后端在文件不存在时返回 `document_path: null`
 （`mock_data._document_path()` 会先查磁盘），前端拿到 `null` 就不渲染 PDF 区块 ——
-所以后果是「实验页少了文档阅读区」，**不会**出现加载失败的面板，
+所以后果是“实验页少了文档阅读区”，**不会**出现加载失败的面板，
 指南、代码编辑、判题都不受影响。
 
 如果以后想把 PDF 放到对象存储，改 `backend/app/mock_data.py` 里的 `DOCUMENTS`
@@ -235,7 +235,7 @@ PY
 ### 5.1 确认判题真的进了 bubblewrap 沙箱
 
 默认配置是 `JUDGE_SANDBOX=auto`：能用 bwrap 就用，用不了就退回普通子进程并在日志里打 warning。
-「静默退化」不算好，所以**部署时按下面这一步做一次确定性验证**：
+“静默退化”不算好，所以**部署时按下面这一步做一次确定性验证**：
 
 ```bash
 # 临时改成严格模式：bwrap 用不了就拒绝判题（宁可失败，也不要无隔离地跑）
@@ -243,7 +243,7 @@ sed -i 's/^Environment=JUDGE_ENABLED=true/Environment=JUDGE_ENABLED=true\nEnviro
     /etc/systemd/system/csbb-backend.service
 systemctl daemon-reload && systemctl restart csbb-backend
 
-# 重跑上面那段「用参考答案打一次判题」——能 passed 就说明 bwrap 真的生效了
+# 重跑上面那段“用参考答案打一次判题”——能 passed 就说明 bwrap 真的生效了
 ```
 
 验证通过后，把 `Environment=JUDGE_SANDBOX=bwrap` 删掉恢复 `auto` 即可（避免内核/发行版日后

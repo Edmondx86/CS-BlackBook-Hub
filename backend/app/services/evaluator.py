@@ -333,7 +333,7 @@ class UdpPingerClientStrategy(JudgeStrategy):
     客户端约定：教材 UDPPingerClient 硬编码 ``127.0.0.1:12000``，发 ping 后打印含
     ``RTT`` 的行、超时打印 ``lost``（不解析 ``--port``）。
     参考服务器按教材 ``UDPPingerServer.py`` 实现，约 4/11 概率随机丢包，判题固定监听
-    12000 端口，以「客户端打印了 RTT 且打印了 lost」为通过。
+    12000 端口，以“客户端打印了 RTT 且打印了 lost”为通过。
 
     说明：参考服务器与学生客户端同处 ``127.0.0.1``、都走子进程路径（等价于
     :func:`sandbox.start_sandbox` 的子进程兜底），以便客户端能直接连到服务器。
@@ -444,7 +444,7 @@ class UdpPingerClientStrategy(JudgeStrategy):
 class UdpPingerServerStrategy(JudgeStrategy):
     """学生写 UDP Pinger 服务器（教材风格）：监听 ``--port``，收到报文转大写并随机丢包。
 
-    后端以 UDP 客户端身份连上学生服务器、发若干 ping，校验「服务器能响应且回显正确转大写」。
+    后端以 UDP 客户端身份连上学生服务器、发若干 ping，校验“服务器能响应且回显正确转大写”。
     随机丢包由学生代码里的 random.seed(42) 决定，判题不强制要求精确的丢包概率。
     """
 
@@ -480,7 +480,7 @@ class WebClientStrategy(JudgeStrategy):
     """学生写 TCP Web 客户端（教材风格）：硬编码 127.0.0.1:80，发 GET /hello.html。
 
     后端在 127.0.0.1:80 起 HTTP 参考服务器（/hello.html -> 200），直接运行学生客户端
-    （不传额外参数），判题以「服务器收到 /hello.html 且 客户端打印了 200 OK」为通过。
+    （不传额外参数），判题以“服务器收到 /hello.html 且 客户端打印了 200 OK”为通过。
 
     说明：客户端代码硬编码端口 80（教材示例写法），因此参考服务器也必须监听 80 端口；
     若 80 端口被占用会导致判题失败。
@@ -612,7 +612,7 @@ class PingCommandStrategy(JudgeStrategy):
     """第一章引导：学生直接输入 ``ping <host>:<port>`` 命令，后端起一个回 ``pong`` 的
     TCP 服务器并验证往返。
 
-    学生提交的「代码」其实是一行命令（如 ``ping 127.0.0.1:8000``），后端读取后：
+    学生提交的“代码”其实是一行命令（如 ``ping 127.0.0.1:8000``），后端读取后：
     1. 识别是否为 ``ping`` 命令；
     2. 起参考服务器（回 ``pong``），发 ``ping`` 收到 ``pong``；
     3. 通过则返回 ``pong，恭喜你成功通过测试``。
@@ -701,7 +701,7 @@ class SmtpStrategy(JudgeStrategy):
     """学生写 SMTP 客户端：后端跑参考 SMTP 服务器，客户端完成 SMTP 对话。
 
     客户端约定：连接 127.0.0.1:25，发送 HELO / MAIL FROM / RCPT TO / DATA / 正文 / QUIT。
-    判题以「服务器收到完整 SMTP 对话」为通过。
+    判题以“服务器收到完整 SMTP 对话”为通过。
     """
 
     name = "smtp"
@@ -822,7 +822,7 @@ class ProxyStrategy(JudgeStrategy):
     """学生写 Web 代理服务器：后端跑源服务器，代理转发请求。
 
     代理约定：从 ``sys.argv[1]`` 读取监听端口；收到请求后转发给源服务器（127.0.0.1:80）。
-    判题以「代理能返回源服务器的内容」为通过。
+    判题以“代理能返回源服务器的内容”为通过。
     """
 
     name = "proxy"
@@ -959,7 +959,7 @@ class IcmpPingStrategy(JudgeStrategy):
 
 
 def _ref_checksum(data: bytes) -> int:
-    """参考答案 ``checksum`` 的实现（教材「自顶向下」ICMP Ping 客户端）。
+    """参考答案 ``checksum`` 的实现（教材“自顶向下”ICMP Ping 客户端）。
 
     作为校验基准：提取学生代码里的 ``checksum`` 函数后，对同一段报文调用并与之比对。
     """
@@ -1135,7 +1135,7 @@ async def _request_with_retry(
 
 
 async def _spawn_untrusted(script: Path) -> SandboxHandle:
-    """启动「学生提交的代码」——一律走 :func:`start_sandbox`，不要用裸的 create_subprocess_exec。
+    """启动“学生提交的代码”——一律走 :func:`start_sandbox`，不要用裸的 create_subprocess_exec。
 
     走沙箱才能同时拿到三样东西：命名空间隔离（bwrap）、内存/CPU/进程数上限、
     以及只含最小变量的环境（不再把后端进程的全部环境变量透传给不可信代码）。
@@ -1203,8 +1203,8 @@ async def _udp_ping_once(loop, host, port, payload, timeout):
 def _strip_comment_lines(text: str) -> str:
     """去掉以 ``#`` 开头的注释行，返回剩余内容（用于识别命令行输入）。
 
-    学生提交的「代码」里常保留占位符注释（如 ``# 请在下方输入一条 ping 命令``），
-    若不去除会干扰命令识别；这里只剔除「整行都是注释」的行，保留真正的命令。
+    学生提交的“代码”里常保留占位符注释（如 ``# 请在下方输入一条 ping 命令``），
+    若不去除会干扰命令识别；这里只剔除“整行都是注释”的行，保留真正的命令。
     """
     lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
     return "\n".join(lines).strip()

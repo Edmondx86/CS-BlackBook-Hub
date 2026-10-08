@@ -3,7 +3,7 @@
 设计要点
 --------
 1. 所有模型继承 :class:`_StrictModel`，其 ``extra="forbid"`` 使任何未声明的
-   字段都会触发校验错误，满足「严格数据类型校验」的需求。
+   字段都会触发校验错误，满足“严格数据类型校验”的需求。
 2. 使用 ``Literal`` 约束枚举类字段（Lab 类型、编程语言、附件类别）。
 3. 使用 ``field_validator`` 对文件路径做后缀校验（.pcap / .md 等）。
 """
@@ -150,7 +150,7 @@ class Lab(_StrictModel):
     guide_path: str = Field(..., description="Markdown 指南的相对路径")
     guide: str = Field(..., description="Markdown 指南的完整内容")
     starter_code: str = Field(default="", description="初始代码模板内容（已内联，前端直接使用）")
-    reference_code: str = Field(default="", description="参考答案代码（已内联，供「显示参考答案」使用）")
+    reference_code: str = Field(default="", description="参考答案代码（已内联，供“显示参考答案”使用）")
     reference_server_code: str = Field(default="", description="参考服务器代码（学生写客户端时，后端判题对端的服务器实现）")
     hints: list[str] = Field(default_factory=list, description="分级提示（前端逐级揭示，最后才是参考答案）")
     document_path: str | None = Field(default=None, description="作业要求文档（PDF）的访问路径")
@@ -194,7 +194,7 @@ class RunRequest(_StrictModel):
 class EvaluationCheck(_StrictModel):
     """判题过程中单项校验的结果。"""
 
-    name: str = Field(..., description="校验项名称，如「状态码 200」")
+    name: str = Field(..., description="校验项名称，如“状态码 200”")
     passed: bool
     detail: str = Field(default="", description="校验详情")
 

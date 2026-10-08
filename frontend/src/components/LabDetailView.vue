@@ -14,6 +14,7 @@ import { useRoute } from 'vue-router'
 import { createMarkdown } from '../markdown'
 import hljs from '../highlight'
 import ChapterNav from './ChapterNav.vue'
+import WiresharkGuide from './WiresharkGuide.vue'
 import { useChapter } from '../composables/useChapter'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -77,7 +78,7 @@ let dragKind = null          // 'h' | 'v'
 const labId = computed(() => props.labId || route.params.labId)
 const chapterId = computed(() => route.params.chapterId)
 
-// 左侧「本章导航」要列出本章所有实验，需要章节概览；与卡片页共用同一份缓存（见 useChapter）
+// 左侧“本章导航”要列出本章所有实验，需要章节概览；与卡片页共用同一份缓存（见 useChapter）
 const chapter = useChapter(chapterId)
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,13 @@ const typeLabel = computed(() =>
   lab.value?.type === 'wireshark' ? 'Wireshark 实验' : 'Socket 练习',
 )
 const isWireshark = computed(() => lab.value?.type === 'wireshark')
+
+// 作业文档（PDF）的展开状态。
+// Socket 练习照旧直接展开；Wireshark 实验默认收起 —— 这些 PDF 每份 2 MB 上下、
+// 7~8 页，一进来就自动下载并渲染，既慢又把上面那份指南彻底盖住。
+const showPdf = ref(false)
+watch(isWireshark, (value) => (showPdf.value = !value), { immediate: true })
+
 const langLabel = computed(
   () => ({ python: 'Python', c: 'C', java: 'Java' })[lab.value?.language] ?? 'text',
 )
@@ -479,30 +487,61 @@ onBeforeUnmount(() => {
 
           <div class="flex-1 overflow-y-auto">
             <div :class="isWireshark ? 'mx-auto max-w-6xl px-6 py-6' : 'px-6 py-6'">
-              <article class="markdown-body" v-html="renderedGuide"></article>
+              <!-- Wireshark 实验：指南 + 引导栏（步骤进度 / 本页目录 / 过滤器速查 + 前后实验导航） -->
+              <WiresharkGuide v-if="isWireshark" :lab="lab" :chapter="chapter" />
+              <!-- Socket 练习：只放指南，代码编辑器在右栏 -->
+              <article v-else class="markdown-body" v-html="renderedGuide"></article>
 
-              <!-- 作业要求文档（PDF）：像图片一样内嵌，随外层滚动自然展开 -->
-              <section v-if="documentUrl" class="mt-10 px-12">
-                <div class="w-full rounded-md bg-white shadow-sm">
-                  <VuePdfEmbed
-                    :source="documentUrl"
-                    @loading-failed="onPdfError"
-                    @rendering-failed="onPdfError"
-                  />
-                </div>
+              <!-- 作业要求文档（PDF） -->
+              <section v-if="documentUrl" class="mt-10">
+                <!-- 未展开时只放一个按钮：这些 PDF 每个 2 MB 上下，
+                     不该在打开页面的瞬间就白白下载并渲染 -->
+                <button
+                  v-if="!showPdf"
+                  type="button"
+                  class="flex w-full items-center gap-3 rounded-lg border border-line bg-card px-4 py-3 text-left text-sm text-secondary transition hover:bg-elevated hover:text-primary"
+                  @click="showPdf = true"
+                >
+                  <span aria-hidden="true">📄</span>
+                  <span class="font-medium">打开官方实验文档</span>
+                  <span class="text-xs text-faint">{{ documentName }}</span>
+                  <span class="ml-auto text-xs text-faint">点击加载 ↓</span>
+                </button>
+
+                <template v-else>
+                  <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h2 class="text-sm font-semibold text-secondary">官方实验文档</h2>
+                    <span class="text-xs text-faint">{{ documentName }}</span>
+                    <a
+                      :href="documentUrl"
+                      target="_blank"
+                      rel="noopener"
+                      class="text-xs text-theme-light transition hover:underline"
+                    >
+                      在新窗口打开 ↗
+                    </a>
+                    <button
+                      v-if="isWireshark"
+                      type="button"
+                      class="ml-auto text-xs text-faint transition hover:text-muted"
+                      @click="showPdf = false"
+                    >
+                      收起
+                    </button>
+                  </div>
+
+                  <div class="px-12">
+                    <div class="w-full rounded-md bg-white shadow-sm">
+                      <VuePdfEmbed
+                        :source="documentUrl"
+                        @loading-failed="onPdfError"
+                        @rendering-failed="onPdfError"
+                      />
+                    </div>
+                  </div>
+                </template>
 
                 <p v-if="pdfError" class="mt-3 text-center text-sm text-danger">{{ pdfError }}</p>
-
-                <p class="mt-3 text-center text-sm text-faint">
-                  <a
-                    :href="documentUrl"
-                    target="_blank"
-                    rel="noopener"
-                    class="text-theme-light transition hover:underline"
-                  >
-                    {{ documentName }} ↗
-                  </a>
-                </p>
               </section>
             </div>
           </div>

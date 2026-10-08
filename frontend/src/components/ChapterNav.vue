@@ -1,7 +1,7 @@
 <script setup>
 // 章节内的位置导航（左侧栏）。
 //
-// 把「本章的知识卡片」和「实验 / 练习」列成一份目录，并高亮当前所在的那一项，
+// 把“本章的知识卡片”和“实验 / 练习”列成一份目录，并高亮当前所在的那一项，
 // 让人在卡片页 / Lab 页随时知道自己在章节的哪个位置。
 //
 // 章节概览由父组件用 useChapter() 取好后传入（详情页本来就要这份数据），组件自身不发请求。
@@ -28,7 +28,7 @@ const currentLabIndex = computed(() => allLabs.value.findIndex((l) => l.id === p
 const isCurrentCard = (slug) => props.currentKind === 'flashcard' && props.currentId === slug
 const isCurrentLab = (id) => props.currentKind === 'lab' && props.currentId === id
 
-// 「知识卡片 3 / 8」这类一句话定位
+// “知识卡片 3 / 8”这类一句话定位
 const positionLabel = computed(() => {
   if (props.currentKind === 'flashcard' && currentCardIndex.value >= 0) {
     return `知识卡片 ${currentCardIndex.value + 1} / ${cards.value.length}`
