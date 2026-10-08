@@ -11,6 +11,15 @@ services:
       - ENABLE_DOCS=false
       # 判题熔断开关：被刷时改成 false 并重启即可止血（不必改代码）
       - JUDGE_ENABLED=true
+      # 判题引擎：subprocess（默认）。判题会在本容器内用 bubblewrap 起学生代码
+      - JUDGE_ENGINE=subprocess
+    # ⚠️ 必须有这一行：Docker 默认的 seccomp 会挡掉 unshare(CLONE_NEWUSER)，
+    # 容器里的 bubblewrap 会直接失败（实测：bwrap: No permissions to create a new namespace），
+    # 于是判题静默退化成「无命名空间隔离地裸跑学生代码」—— 而这正是判题唯一隔离层。
+    # 实测 seccomp=unconfined 即可让完整参数集正常工作（--cap-add SYS_ADMIN 反而会在
+    # pivot_root 处失败，--privileged 能过但权限过大，都不如这个）。
+    security_opt:
+      - seccomp=unconfined
     networks:
       - judge-net
     restart: unless-stopped
