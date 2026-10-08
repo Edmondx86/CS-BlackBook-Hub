@@ -1,15 +1,14 @@
 <script setup>
-// Wireshark 实验的阅读区 + 引导栏。
+// 实验 / 练习的阅读区 + 引导栏（Wireshark 实验与 Socket 练习共用）。
 //
-// 为什么单独抽一个组件：LabDetailView 已经有 730 行，而且 Socket 练习和
-// Wireshark 实验的阅读区诉求完全不同 —— 前者要「指南 + 编辑器 + 终端」，
-// 后者只需要「一份能读得下去的指南 + 随时知道做到哪一步」。
+// 为什么单独抽一个组件：LabDetailView 已经有 700+ 行，而且两类练习的阅读区诉求相同 ——
+// 「一份能读得下去的指南 + 随时知道做到哪一步」。
 //
 // 这里做四件事：
 //   1. 渲染指南正文（沿用全局的 markdown 渲染器，样式与知识卡片一致）
-//   2. 把「实验步骤」解析成可勾选的清单，进度存 localStorage —— 学生下次进来知道做到哪了
-//   3. 右侧常驻：进度、本页目录（滚动高亮）、过滤器速查（点一下即复制）
-//   4. 底部：上一个 / 下一个实验
+//   2. 把「实现步骤 / 实验步骤」解析成可勾选的清单，进度存 localStorage —— 下次进来知道做到哪了
+//   3. 右侧常驻：进度、本页目录（滚动高亮）、过滤器速查（若指南里有，点一下即复制）
+//   4. 底部：上一个 / 下一个实验（按章节页的顺序：先 Wireshark 再 Socket）
 //
 // 解析规则和 mock_data.py 里指南的标题结构是配套的，见该文件 GUIDES 的写法。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -19,15 +18,22 @@ const props = defineProps({
   lab: { type: Object, required: true },
   /** 章节概览（useChapter 的返回值），用于算上一个 / 下一个实验 */
   chapter: { type: Object, default: null },
+  /** 'wireshark' | 'socket'：影响部分文案与是否显示版权署名 */
+  variant: { type: String, default: 'wireshark' },
 })
 
 const md = createMarkdown()
 
+const isWireshark = computed(() => props.variant !== 'socket')
+
 // ---------------------------------------------------------------------------
-// 解析指南：拆出目录、实验步骤、过滤器速查
+// 解析指南：拆出目录、步骤清单、过滤器速查
 // ---------------------------------------------------------------------------
-const STEP_SECTION = '实验步骤'
+// 两类内容的步骤标题不同：Wireshark 实验用「实验步骤」，Socket 练习用「实现步骤」。
 const FILTER_SECTION = '过滤器速查'
+const stepsSectionTitle = computed(() =>
+  props.lab.guide.includes('## 实现步骤') ? '实现步骤' : '实验步骤',
+)
 
 // 侧栏是纯文本渲染（不走 markdown），所以要自己把记号清掉，
 // 否则清单里会露出 <http://…>、[文本](url)、`代码` 这些东西。
@@ -62,7 +68,7 @@ const parsed = computed(() => {
       continue
     }
 
-    if (current === STEP_SECTION) {
+    if (current === stepsSectionTitle.value) {
       const item = line.match(/^\d+\.\s+(.+)$/)
       if (item) {
         steps.push({ label: stepLabel(item[1]), full: stripMd(item[1]) })
@@ -83,7 +89,7 @@ const guideHtml = computed(() => md.render(props.lab.guide))
 // ---------------------------------------------------------------------------
 // 步骤进度（按实验 id 分别存）
 // ---------------------------------------------------------------------------
-const storageKey = computed(() => `wsSteps:${props.lab.id}`)
+const storageKey = computed(() => `labSteps:${props.lab.id}`)
 const done = ref([])
 const doneSet = computed(() => new Set(done.value))
 const percent = computed(() =>
@@ -221,11 +227,11 @@ const nextLab = computed(() =>
       </nav>
 
       <p v-if="allDone" class="mt-4 rounded-lg bg-brand/10 px-4 py-3 text-center text-sm text-brand">
-        这个实验的每一步都打勾了 —— 记得把「要交付什么」里的记录补完，再进下一个实验。
+        这一步清单都打勾了 —— 记得把「{{ isWireshark ? '要交付什么' : '判题会怎么检查' }}」里的要求过一遍，再进下一个。
       </p>
 
       <!-- 署名：实验原作者明确要求，若在网站上发布这些实验需注明来源与版权 -->
-      <p class="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-faint">
+      <p v-if="isWireshark" class="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-faint">
         本页指南由本站整理改编；实验设计与「官方实验文档」来自
         <a
           href="https://www-net.cs.umass.edu/wireshark-labs/"
@@ -242,10 +248,12 @@ const nextLab = computed(() =>
     <!-- 引导栏 -->
     <aside class="hidden w-64 shrink-0 xl:block">
       <div class="sticky top-6 space-y-4">
-        <!-- 实验进度 -->
+        <!-- 步骤进度 -->
         <section v-if="parsed.steps.length" class="rounded-xl border border-line bg-card p-4">
           <div class="flex items-center justify-between">
-            <h3 class="text-xs font-semibold uppercase tracking-widest text-brand">实验进度</h3>
+            <h3 class="text-xs font-semibold uppercase tracking-widest text-brand">
+              {{ isWireshark ? '实验进度' : '练习进度' }}
+            </h3>
             <button
               v-if="done.length"
               type="button"
@@ -301,7 +309,7 @@ const nextLab = computed(() =>
           </ul>
         </section>
 
-        <!-- 过滤器速查 -->
+        <!-- 过滤器速查（指南里有这个章节才显示） -->
         <section v-if="parsed.filters.length" class="rounded-xl border border-line bg-card p-4">
           <h3 class="text-xs font-semibold uppercase tracking-widest text-brand">过滤器速查</h3>
           <p class="mt-1 text-[11px] text-faint">点一下复制，粘到 Wireshark 的显示过滤器栏</p>

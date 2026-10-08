@@ -11,10 +11,9 @@
  */
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { createMarkdown } from '../markdown'
 import hljs from '../highlight'
 import ChapterNav from './ChapterNav.vue'
-import WiresharkGuide from './WiresharkGuide.vue'
+import LabGuide from './LabGuide.vue'
 import { useChapter } from '../composables/useChapter'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -44,13 +43,6 @@ const props = defineProps({
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const DEFAULT_CODE =
   '# 初始代码模板\n# Socket 练习请在此编写并点击“运行测试”；Wireshark 实验以左侧指南为准。\n'
-
-// ---------------------------------------------------------------------------
-// Markdown 渲染器（markdown-it + highlight.js，见 src/markdown.js）
-// ---------------------------------------------------------------------------
-// 注意：html:false 会转义指南里的原始 HTML，降低 XSS 风险；
-// 若指南可能来自不可信来源，建议再叠加 DOMPurify 做白名单清洗。
-const md = createMarkdown()
 
 // ---------------------------------------------------------------------------
 // 状态
@@ -84,7 +76,6 @@ const chapter = useChapter(chapterId)
 // ---------------------------------------------------------------------------
 // 派生数据
 // ---------------------------------------------------------------------------
-const renderedGuide = computed(() => (lab.value ? md.render(lab.value.guide ?? '') : ''))
 const typeLabel = computed(() =>
   lab.value?.type === 'wireshark' ? 'Wireshark 实验' : 'Socket 练习',
 )
@@ -488,9 +479,9 @@ onBeforeUnmount(() => {
           <div class="flex-1 overflow-y-auto">
             <div :class="isWireshark ? 'mx-auto max-w-6xl px-6 py-6' : 'px-6 py-6'">
               <!-- Wireshark 实验：指南 + 引导栏（步骤进度 / 本页目录 / 过滤器速查 + 前后实验导航） -->
-              <WiresharkGuide v-if="isWireshark" :lab="lab" :chapter="chapter" />
+              <LabGuide v-if="isWireshark" variant="wireshark" :lab="lab" :chapter="chapter" />
               <!-- Socket 练习：只放指南，代码编辑器在右栏 -->
-              <article v-else class="markdown-body" v-html="renderedGuide"></article>
+              <LabGuide v-else variant="socket" :lab="lab" :chapter="chapter" />
 
               <!-- 作业要求文档（PDF） -->
               <section v-if="documentUrl" class="mt-10">
