@@ -131,6 +131,31 @@ sudo -u csbb bwrap --unshare-user --ro-bind / / --dev /dev true \
 或接受退化为“systemd 沙箱 + iptables 出站封锁”这一层 —— 判题仍能工作，
 但会失去命名空间隔离（后端日志里会有明确的 warning）。
 
+### 0.6 系统依赖清单（一次装齐）
+
+Ubuntu 24.04 的**最小化镜像默认不装 `python3-venv`** —— 缺了它 `python3 -m venv` 会报
+`ensurepip is not available`。别一个个撞上去，一开始就装齐：
+
+```bash
+apt update
+apt install -y python3-venv bubblewrap iptables
+```
+
+| 包 | 用途 | 缺了会怎样 |
+| --- | --- | --- |
+| `python3-venv` | 建虚拟环境（提供 ensurepip） | `python3 -m venv` 报 `ensurepip is not available` |
+| `bubblewrap` | 判题命名空间隔离 | 判题退化为无隔离（见 0.5） |
+| `iptables` | 按 uid 封锁判题出站（第 7 节） | 第 7 节无法执行 |
+
+> 撞上 `ensurepip is not available` 时，装完包**必须删掉残缺的 venv 重建** ——
+> 报错信息里的 “recreate your virtual environment” 就是这个意思，
+> 半成品目录里连 `pip` 都没有：
+> `rm -rf venv && python3 -m venv venv`。
+>
+> 不需要 `build-essential` / Rust：`requirements.lock.txt` 里所有包在
+> cp312 / manylinux x86_64 上都有预编译 wheel（可用
+> `pip install --dry-run --python-version 3.12 --abi cp312 --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.lock.txt` 预先核对）。
+
 ---
 
 ## 1. 部署形态与取舍（先看这段）
