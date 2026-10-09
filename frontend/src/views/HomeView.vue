@@ -450,8 +450,14 @@ function onScroll(e) {
         © 2026 Computer Network Top-Down Learning. Designed for Geeks &amp; Learners.<br />
         基于《Computer Networking: A Top-Down Approach》理念构建 | 遵守 MIT 开源协议
       </p>
-      <!-- ICP 备案号：按要求在网站底部公示，并链接到工信部备案管理系统 -->
-      <p class="mt-3 text-xs text-faint">
+      <!--
+        备案信息：两套系统各一个号，按要求在网站底部公示。
+        · ICP 备案      → 工信部备案管理系统
+        · 公安联网备案  → 全国互联网安全管理服务平台
+        公安备案的官方片段还带一枚公安徽标图片（备案平台「已备案网站」详情里可下载），
+        需要的话把图标放到 frontend/public/ 下，在下面那个链接里加 <img> 即可。
+      -->
+      <p class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-faint">
         <a
           href="https://beian.miit.gov.cn/"
           target="_blank"
@@ -459,6 +465,14 @@ function onScroll(e) {
           class="transition hover:text-theme-light"
         >
           辽ICP备2026021355号
+        </a>
+        <a
+          href="https://beian.mps.gov.cn/#/query/webSearch?code=21011202001420"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="transition hover:text-theme-light"
+        >
+          辽公网安备21011202001420号
         </a>
       </p>
     </footer>

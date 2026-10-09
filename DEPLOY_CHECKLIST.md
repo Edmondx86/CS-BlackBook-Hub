@@ -366,14 +366,19 @@ ENABLE_DOCS=false  : 三者全部 404
 | [`deploy/nginx-cs-blackbook.conf`](deploy/nginx-cs-blackbook.conf) | 宿主机 nginx 站点配置（`server_name` 已填域名） |
 | [`deploy/csbb-backend.service`](deploy/csbb-backend.service) | systemd unit（含沙箱化与资源上限） |
 
-**⚠️ 中国大陆节点的硬性前置条件：ICP 备案。**
+**⚠️ 中国大陆节点的硬性前置条件：ICP 备案 + 公安联网备案。**
 
-✅ **已完成** —— 备案号 **辽ICP备2026021355号**（辽宁节点），已按要求挂在
-[首页页脚](frontend/src/views/HomeView.vue) 并链接到工信部备案系统
-（<https://beian.miit.gov.cn/>）。部署时无需再做别的处理。
+✅ **两个号都已办好**，一并挂在 [首页页脚](frontend/src/views/HomeView.vue)：
 
-> 另：部分省份还要求**公安联网备案**（公网安备，号段形如「辽公网安备 XXXXXXXX 号」），
-> 它和 ICP 备案是两套系统、两个号。如果辽宁这边要求，拿号后在页脚再加一行即可。
+| 类型 | 备案号 | 链接到 |
+| --- | --- | --- |
+| ICP 备案 | 辽ICP备2026021355号 | 工信部备案管理系统 <https://beian.miit.gov.cn/> |
+| 公安联网备案 | 辽公网安备21011202001420号 | 全国互联网安全管理服务平台 <https://beian.mps.gov.cn/> |
+
+两套系统、两个号，缺一不可。部署时无需再做别的处理。
+
+> 公安备案的官方 HTML 片段里还带一枚公安徽标图片（在备案平台「已备案网站」详情里可下载）。
+> 想要那枚图标的话，把图片放进 `frontend/public/` 后告诉我，我加到页脚链接里。
 
 备案之外，手册第 0 节还有两项部署前检查：**DNS 解析**与**安全组放行 80/443**。
 
