@@ -454,7 +454,7 @@ function onScroll(e) {
         备案信息：两套系统各一个号，按要求在网站底部公示。
         · ICP 备案      → 工信部备案管理系统
         · 公安联网备案  → 全国互联网安全管理服务平台
-        公安备案的官方片段还带一枚公安徽标图片（备案平台「已备案网站」详情里可下载），
+        公安备案的官方片段还带一枚公安徽标图片（备案平台“已备案网站”详情里可下载），
         需要的话把图标放到 frontend/public/ 下，在下面那个链接里加 <img> 即可。
       -->
       <p class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-faint">

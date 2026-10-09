@@ -2,7 +2,7 @@
 
 判题时由 ``evaluator.WebClientStrategy`` 以 subprocess 拉起，监听
 ``127.0.0.1:<port>``：对 ``/hello.html`` 返回 200，其它路径返回 404，
-同时打印 ``received <path>`` 供判题判断「客户端是否发出了请求」。
+同时打印 ``received <path>`` 供判题判断“客户端是否发出了请求”。
 """
 
 import argparse

@@ -22,7 +22,7 @@
 > 附件说明：`/labs/{id}` 返回的 `attachments` **只收录磁盘上真实存在的文件**——`pcap_path`、
 > `guide_path`、`static/tests/<id>_tests.py` 只要文件不在，就会自动从列表里省略，不会产生断链。
 > 另外，**指南正文一律取自 `GUIDES` 内联字符串**，与 `guide_path` 指向的文件无关（后者只是元数据）。
-> Socket 练习的「参考服务器代码」会先找 `static/solutions/`，找不到再找 `judge/servers/`。
+> Socket 练习的“参考服务器代码”会先找 `static/solutions/`，找不到再找 `judge/servers/`。
 
 ---
 
@@ -44,7 +44,7 @@ backend/static/docs/dns.pdf          # 作业要求文档（可选）
 ```python
 "ws-dns": """# DNS 协议实验
 
-> 对应教材 **Chapter 2**「Application Layer」。
+> 对应教材 **Chapter 2**“Application Layer”。
 
 ## 实验目标
 1. 观察 DNS 查询/响应的报文结构。
@@ -188,9 +188,9 @@ STRATEGIES: dict[str, JudgeStrategy] = {
 ### 4. 检查清单
 
 - [ ] `starter/<id>.py` 存在（否则编辑器显示占位符）
-- [ ] `solutions/<id>.py` 存在（否则「参考答案」显示「暂无」）
+- [ ] `solutions/<id>.py` 存在（否则“参考答案”显示“暂无”）
 - [ ] `GUIDES` + `DOCUMENTS`(可选) + `CHAPTERS` 已加
-- [ ] `STRATEGIES` 已登记（否则 `/run` 返回「暂无判题策略」）
+- [ ] `STRATEGIES` 已登记（否则 `/run` 返回“暂无判题策略”）
 - [ ] 重启后端
 
 ---
@@ -241,7 +241,7 @@ class TcpEchoStrategy(JudgeStrategy):
 
 要点：
 - `verify()` 返回 `_VerifyOutcome(status, checks, status_code, headers, body_preview)`。
-- 启动 / 采日志 / 强杀进程 / 汇总 `EvaluationResult` 都由基类 `JudgeStrategy.judge()` 统一处理，子类只写「怎么校验」。
+- 启动 / 采日志 / 强杀进程 / 汇总 `EvaluationResult` 都由基类 `JudgeStrategy.judge()` 统一处理，子类只写“怎么校验”。
 - 需要的 `import`：`EvaluationCheck`、`_VerifyOutcome`、`JudgeStrategy`（同文件内已可用）。
 
 ---

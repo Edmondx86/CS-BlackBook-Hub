@@ -43,7 +43,7 @@ nslookup csblackbookhub.com        # 应返回 47.103.218.113
 nslookup www.csblackbookhub.com    # 同上
 ```
 
-> `nslookup` 显示「非权威应答」是正常的 —— 那只是递归解析器的缓存答案。
+> `nslookup` 显示“非权威应答”是正常的 —— 那只是递归解析器的缓存答案。
 
 ### 0.3 安全组放行 ✅ 已完成
 
@@ -124,7 +124,7 @@ sudo -u csbb bwrap --unshare-user --ro-bind / / --dev /dev true \
 ```
 
 > ⚠️ **一定要用 `csbb` 这个用户去验**。以 root 执行永远会成功，root 不受该限制 ——
-> 用 root 验会得到「明明能用但判题全挂」的假结论。
+> 用 root 验会得到“明明能用但判题全挂”的假结论。
 
 如果连上面的策略也不生效（极少数发行版/内核组合），再退化为
 `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`（全局放开，影响面大），
@@ -334,7 +334,7 @@ journalctl -u csbb-backend | grep -i bwrap
 
 ## 6. 配置 nginx
 
-> **⚠️ 这台服务器的 nginx 与证书都已经就绪了**，不要按「先装配置、再 certbot 签发」的老流程走 ——
+> **⚠️ 这台服务器的 nginx 与证书都已经就绪了**，不要按“先装配置、再 certbot 签发”的老流程走 ——
 > 那会丢掉已有的 HTTPS 配置。实测现状：
 >
 > | 项 | 现状 |
@@ -342,7 +342,7 @@ journalctl -u csbb-backend | grep -i bwrap
 > | nginx | `nginx/1.24.0 (Ubuntu)` 已在跑 |
 > | HTTP → HTTPS | 已配 301 跳转 |
 > | 证书 | Let's Encrypt，`CN=csblackbookhub.com`，**SAN 含 `www`** |
-> | 首页 | 一个占位页「黑皮书技术笔记」 |
+> | 首页 | 一个占位页“黑皮书技术笔记” |
 > | `/api/` | 404（还没有反代配置，后端也没部署） |
 >
 > 仓库里的 [nginx-cs-blackbook.conf](nginx-cs-blackbook.conf) **已自带 443 段**

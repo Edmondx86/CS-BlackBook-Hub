@@ -2,7 +2,7 @@
 // 实验 / 练习的阅读区 + 引导栏（Wireshark 实验与 Socket 练习共用）。
 //
 // 为什么单独抽一个组件：LabDetailView 已经有 700+ 行，而且两类练习的阅读区诉求相同 ——
-// 「一份能读得下去的指南 + 随时知道做到哪一步」。
+// “一份能读得下去的指南 + 随时知道做到哪一步”。
 //
 // 这里做三件事：
 //   1. 渲染指南正文（沿用全局的 markdown 渲染器，样式与知识卡片一致）
@@ -62,7 +62,7 @@ const activeSection = ref(0)
 let scrollHost = null
 let resizeObserver = null
 
-// 认为「标题滚到视口顶部 90px 以内」就算进入了这一节
+// 认为“标题滚到视口顶部 90px 以内”就算进入了这一节
 const VIEWPORT_OFFSET = 90
 
 function headings() {
@@ -180,7 +180,7 @@ const nextLab = computed(() =>
 
       <!-- 署名：实验原作者明确要求，若在网站上发布这些实验需注明来源与版权 -->
       <p v-if="isWireshark" class="mt-8 border-t border-line pt-4 text-xs leading-relaxed text-faint">
-        本页指南由本站整理改编；实验设计与「官方实验文档」来自
+        本页指南由本站整理改编；实验设计与“官方实验文档”来自
         <a
           href="https://www-net.cs.umass.edu/wireshark-labs/"
           target="_blank"

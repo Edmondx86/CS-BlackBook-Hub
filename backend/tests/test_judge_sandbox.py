@@ -281,6 +281,9 @@ class ProxyReadUntilMarkerTest(unittest.TestCase):
     教材风格的代理是分三段 send 的（状态行 / 头 / 正文），单次 ``read(n)`` 只要有
     一个字节就返回，于是只拿到第一段、判题报“响应中未包含源服务器内容”。
     实测这份参考答案在单次 read 下通过率只有 2/6，改成分段读到标记后 6/6。
+
+    这里的 MARKER 只是**随便一个样本标记** —— 判题真正的标记是每次运行随机生成的
+    （见 ProxyStrategy 与 tests/test_proxy_strategy.py），本用例只管读取循环本身。
     """
 
     MARKER = b"PROXY_ORIGIN_HELLO"

@@ -2,10 +2,14 @@
 from socket import *
 import sys
 import os
+import tempfile
 
 if len(sys.argv) <= 1:
 	print('Usage : "python ProxyServer.py proxy_port [origin_port]"\n[proxy_port  : 代理自己的监听端口]\n[origin_port : 源服务器端口，默认 8080]')
 	sys.exit(2)
+# 缓存目录必须放在临时目录下：判题沙箱里只有临时目录可写（工作目录是只读挂载的），
+# 写相对路径 "WEB/..." 会直接 OSError 失败。
+cacheRoot = os.path.join(tempfile.gettempdir(), "WEB")
 # Create a server socket, bind it to a port and start listening
 tcpSerSock = socket(AF_INET, SOCK_STREAM)
 tcpSerPort = int(sys.argv[1])
@@ -34,7 +38,7 @@ while 1:
 	print("filetouse:", filetouse)
 	try:
 		# Check wether the file exist in the cache
-		f = open("WEB/" + filetouse[1:], "rb")
+		f = open(os.path.join(cacheRoot, *filetouse[1:].split("/")), "rb")
 		outputdata = f.read()
 		f.close()
 		fileExist = "true"
@@ -66,11 +70,10 @@ while 1:
 				serverResponse = fileobj.read()
 				# Create a new file in the cache for the requested file.
 				# Also send the response in the buffer to client socket and the corresponding file in the cache
-				filename = "WEB/" + filename
-				filesplit = filename.split('/')
-				for i in range(0, len(filesplit) - 1):
-					if not os.path.exists("/".join(filesplit[0:i+1])):
-						os.makedirs("/".join(filesplit[0:i+1]))
+				# 同样写到临时目录（沙箱里唯一可写的地方），并用 os.makedirs 补出子目录。
+				filename = os.path.join(cacheRoot, *filename.split("/"))
+				if not os.path.exists(os.path.dirname(filename)):
+					os.makedirs(os.path.dirname(filename))
 				tmpFile = open(filename, "wb")
 				print(serverResponse)
 				serverResponse = serverResponse.split(b'\r\n\r\n')[1]

@@ -40,5 +40,5 @@ curl -sI https://csblackbookhub.com/static/docs/ws-tcp.pdf | head -1   # 期望 
 
 `mock_data._document_path()` 会先检查文件在不在磁盘上，不在就返回 `None`
 （而不是给前端一个必然 404 的链接）。前端拿到 `null` 就不渲染 PDF 区块 ——
-所以漏传 PDF 的后果是「实验页少了文档阅读区」，不会出现加载失败的面板，
+所以漏传 PDF 的后果是“实验页少了文档阅读区”，不会出现加载失败的面板，
 其余功能（指南、代码编辑、判题）都不受影响。

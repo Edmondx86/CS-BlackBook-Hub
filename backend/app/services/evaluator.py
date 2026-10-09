@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import contextvars
+import secrets
 import shutil
 import socket
 import sys
@@ -855,6 +856,40 @@ _PROXY_ORIGIN_PORT: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "proxy_origin_port", default=None
 )
 
+# 源站响应里的标记同样是每次判题现生成的，理由见 _new_proxy_marker()。
+# 它也必须走 ContextVar 而不是实例属性：ProxyStrategy 是 **单例**（见 STRATEGIES），
+# 而 MAX_CONCURRENT_RUNS=4 允许同一个 Lab 并发判题，实例属性会让学生在两次判题之间串值。
+_PROXY_ORIGIN_MARKER: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "proxy_origin_marker", default=None
+)
+
+
+def _new_proxy_marker() -> str:
+    """生成一次判题专用的源站标记。
+
+    以前标记是写死的 ``PROXY_ORIGIN_HELLO``，而它明写在公开的实验指引里 —— 学生只要
+    先往自己的缓存目录里伪造一份含该标记的文件，再让代码走缓存分支返回，就**一次真实
+    转发都不做**也能通过。改成每次判题随机生成后，响应里出现该标记只能是“真的从源站
+    取回来的”。随机串用 ``secrets``（判题结果不应可预测）。前缀保留，便于肉眼排查。
+    """
+    return "PROXY_ORIGIN_" + secrets.token_hex(8).upper()
+
+
+# 判题请求的路径固定在 /127.0.0.1/hello.html，学生（按教材与 starter 的约定）把这份内容
+# 缓存在 tempfile.gettempdir()/WEB/127.0.0.1/hello.html。
+# bwrap 沙箱每次判题给一个**私有 tmpfs /tmp**，缓存天然是干净的；但在没有沙箱兜底的环境
+# （本机 Windows、JUDGE_SANDBOX=none）里 /tmp 是共享的：上一次判题留下的、带**上一次随机
+# 标记**的缓存会让这一次命中缓存、拿不回本次标记，连参考答案都会被误判失败。故开跑前清掉。
+_PROXY_CACHE_RELPATH = ("WEB", "127.0.0.1", "hello.html")
+
+
+def _clear_stale_proxy_cache(path: Path | None = None) -> None:
+    """删掉上一次判题可能留下的代理缓存条目；不存在（或删不掉）就什么都不做。"""
+    try:
+        (path or Path(tempfile.gettempdir()).joinpath(*_PROXY_CACHE_RELPATH)).unlink()
+    except OSError:
+        pass
+
 
 class ProxyStrategy(JudgeStrategy):
     """学生写 Web 代理服务器：后端跑源服务器，代理转发请求。
@@ -864,12 +899,17 @@ class ProxyStrategy(JudgeStrategy):
     ``127.0.0.1:<argv[2]>``。判题以“代理返回了源服务器的真实内容”为通过。
 
     两个端口都不固定：监听端口由 :func:`find_free_port` 分配，源站端口另分配一个空闲
-    端口并经 ``sys.argv[2]`` 交给学生的代理。
+    端口并经 ``sys.argv[2]`` 交给学生的代理。源站响应里的标记也是**每次判题随机生成**
+    的（见 :func:`_new_proxy_marker`），学生无法预先伪造。
     """
 
     name = "proxy"
     script_filename = "ch2_proxy.py"
     read_timeout = 10.0
+    # 比全局硬超时（5.0s）宽：本策略要额外做 STARTUP_WAIT + 最多 read_timeout 的读取，
+    # 5s 预算下学生代理稍微慢一点就先被“整体执行超过 5.0s”截断，真实原因（代理没把
+    # 源站内容带回来）永远看不到。参考 UdpPingerServerStrategy 的做法按策略放宽。
+    exec_timeout_seconds = 12.0
 
     def build_command(self, script, port):
         command = [sys.executable, str(script), str(port)]
@@ -881,20 +921,24 @@ class ProxyStrategy(JudgeStrategy):
     async def judge(self, script, test_cases, *, host, port, on_log=None):
         started = time.monotonic()
         origin_port = find_free_port(host)
+        marker = _new_proxy_marker()
+        _clear_stale_proxy_cache()
         origin_script = (
             Path(__file__).resolve().parents[2] / "judge" / "servers" / "ch2_proxy_origin_server.py"
         )
         origin_proc = await asyncio.create_subprocess_exec(
             sys.executable, str(origin_script), "--port", str(origin_port),
+            "--marker", marker,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             start_new_session=True,
         )
         await asyncio.sleep(0.5)
-        token = _PROXY_ORIGIN_PORT.set(origin_port)
+        port_token = _PROXY_ORIGIN_PORT.set(origin_port)
+        marker_token = _PROXY_ORIGIN_MARKER.set(marker)
         try:
             # 源站必须真的起来了才谈得上判题。以前这里只看 sleep、不查存活：源站绑不上
             # 端口时判题会照常往下跑，最后给出误导性结论（学生代理连不上源站，却被记成
-            # 别的原因；甚至可能借学生代码里的 WEB/ 缓存分支“空转通过”）。
+            # 别的原因；甚至可能借学生代码里的缓存分支“空转通过”）。
             if origin_proc.returncode is not None:
                 detail = f"{origin_port} 端口启动失败，判题无法进行"
                 origin_output = await _drain_dead_proc(origin_proc)
@@ -910,7 +954,8 @@ class ProxyStrategy(JudgeStrategy):
                 )
             return await super().judge(script, test_cases, host=host, port=port, on_log=on_log)
         finally:
-            _PROXY_ORIGIN_PORT.reset(token)
+            _PROXY_ORIGIN_PORT.reset(port_token)
+            _PROXY_ORIGIN_MARKER.reset(marker_token)
             await _terminate_proc(origin_proc)
 
     async def _read_until_marker(self, reader: asyncio.StreamReader, marker: bytes) -> bytes:
@@ -938,6 +983,21 @@ class ProxyStrategy(JudgeStrategy):
         return buffered
 
     async def verify(self, proc, host, port, test_cases, request_timeout):
+        # 判据是**本次判题**的随机标记：固定标记写在公开指引里，学生可以伪造缓存命中后
+        # 直接返回它，因此必须拿 ContextVar 里这一次的值来比对，不能拿常量。
+        marker = _PROXY_ORIGIN_MARKER.get()
+        if not marker:
+            return _VerifyOutcome(
+                status="error",
+                checks=[
+                    EvaluationCheck(
+                        name="判题配置",
+                        passed=False,
+                        detail="本次判题没有生成源站标记，无法校验代理是否真的转发了请求",
+                    )
+                ],
+            )
+        marker_bytes = marker.encode()
         # 请求路径带 host，符合教材代理的解析格式（GET /host/file HTTP/1.0）
         raw = b"GET /127.0.0.1/hello.html HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n"
         try:
@@ -956,7 +1016,7 @@ class ProxyStrategy(JudgeStrategy):
             # 分多次 send（教材写法就是“先状态行、再头、再正文”三段），单次 read() 拿到
             # 第一段就返回，于是“响应里没有源站内容”被误判为失败。
             # 实测这份参考答案在单次 read 下通过率只有 2/6。
-            data = await self._read_until_marker(reader, b"PROXY_ORIGIN_HELLO")
+            data = await self._read_until_marker(reader, marker_bytes)
         except (OSError, asyncio.TimeoutError) as exc:
             return _VerifyOutcome(
                 status="failed",
@@ -969,7 +1029,7 @@ class ProxyStrategy(JudgeStrategy):
             except Exception:
                 pass
 
-        ok = b"PROXY_ORIGIN_HELLO" in data
+        ok = marker_bytes in data
         return _VerifyOutcome(
             status="passed" if ok else "failed",
             checks=[
@@ -1309,7 +1369,7 @@ async def _udp_ping_once(loop, host, port, payload, timeout):
         except asyncio.TimeoutError:
             return None
         except OSError:
-            # 对端没有 UDP 监听时属于「没回应」，不是判题故障：
+            # 对端没有 UDP 监听时属于“没回应”，不是判题故障：
             # Windows 会因 ICMP port unreachable 在 recvfrom 上抛
             # ConnectionResetError(WinError 10054)（Linux 则是安静超时，不回错）。
             # 不接住它，学生交一个绑 TCP 端口的程序就会让接口 500。
