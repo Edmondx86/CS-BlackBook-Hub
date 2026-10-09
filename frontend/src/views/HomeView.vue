@@ -450,6 +450,17 @@ function onScroll(e) {
         © 2026 Computer Network Top-Down Learning. Designed for Geeks &amp; Learners.<br />
         基于《Computer Networking: A Top-Down Approach》理念构建 | 遵守 MIT 开源协议
       </p>
+      <!-- ICP 备案号：按要求在网站底部公示，并链接到工信部备案管理系统 -->
+      <p class="mt-3 text-xs text-faint">
+        <a
+          href="https://beian.miit.gov.cn/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="transition hover:text-theme-light"
+        >
+          辽ICP备2026021355号
+        </a>
+      </p>
     </footer>
 
   
