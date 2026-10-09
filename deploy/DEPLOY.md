@@ -447,7 +447,11 @@ curl -s -o /dev/null -w 'home    %{http_code}\n' https://csblackbookhub.com/
 curl -s -o /dev/null -w 'www     %{http_code}\n' https://www.csblackbookhub.com/
 curl -s -o /dev/null -w 'api     %{http_code}\n' https://csblackbookhub.com/api/v1/chapters
 curl -s -o /dev/null -w 'static  %{http_code}\n' https://csblackbookhub.com/static/docs/ws-http.pdf   # 期望 200（PDF 已单独上传）
-curl -s -o /dev/null -w 'docs    %{http_code}\n' https://csblackbookhub.com/docs      # 期望 404（已关）
+# 注意：https://…/docs 返回 200 是**正常的** —— 它不是 FastAPI 文档，而是 nginx 的
+# SPA 回退（location / 的 try_files 会把它交给 index.html）。后端文档在应用根路径
+# /docs 与 /openapi.json，而 nginx 只反代 /api/ 与 /static/，所以公网压根不可达。
+# 要确认 ENABLE_DOCS=false 真的生效，得直接在服务器上问后端（见下）。
+curl -s -o /dev/null -w 'docs    %{http_code}\n' https://csblackbookhub.com/docs      # 期望 200（SPA 回退，非文档）
 
 # c) HTTP 应 301 跳到 HTTPS
 curl -s -o /dev/null -w 'http->   %{http_code} %{redirect_url}\n' http://csblackbookhub.com/
