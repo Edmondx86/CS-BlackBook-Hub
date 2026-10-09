@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import contextvars
 import shutil
 import socket
 import sys
@@ -37,6 +38,11 @@ REQUEST_TIMEOUT_SECONDS = 3.0
 EXEC_TIMEOUT_SECONDS = 5.0
 # 静态判题里“单独跑一次学生函数”的硬超时，防止死循环拖住后端进程
 CHECKSUM_TIMEOUT_SECONDS = 3.0
+# UDP Pinger 服务器判题：一共 11 次 ping，学生代码按 random.seed(42) 会丢掉约 4 次，
+# 每次丢包都要等满这个超时。用 1.0s 的话总计会逼近 EXEC_TIMEOUT_SECONDS(5s) ——
+# 实测会偶发“整体执行超过 5.0s”而误判失败。回环上的 UDP 往返是亚毫秒级，
+# 0.5s 已经有三个数量级的余量，足够稳。
+UDP_PING_TIMEOUT_SECONDS = 0.5
 MAX_BODY_PREVIEW = 500
 
 # 在一次性的判题沙箱里执行的驱动脚本：加载学生提交的 checksum 函数，对固定样例报文求值。
@@ -117,6 +123,10 @@ class JudgeStrategy:
 
     name: str = "base"
     script_filename: str = "main.py"
+    # 该策略特有的整体硬超时；留空则用全局 EXEC_TIMEOUT_SECONDS。
+    # 只有 UdpPingerServer 需要调大：它要跑 11 次 UDP ping，丢包时每次都要等满
+    # UDP_PING_TIMEOUT_SECONDS，比其它策略慢一个量级。
+    exec_timeout_seconds: float | None = None
 
     def build_command(self, script: Path, port: int) -> list[str]:
         """启动命令，默认 ``python <script> --port <port>``。"""
@@ -193,9 +203,10 @@ class JudgeStrategy:
         )
 
         # 3. 等待启动 -> 4. 校验（整体硬超时）
+        budget = self.exec_timeout_seconds or EXEC_TIMEOUT_SECONDS
         try:
             await asyncio.sleep(STARTUP_WAIT_SECONDS)
-            async with asyncio.timeout(EXEC_TIMEOUT_SECONDS):
+            async with asyncio.timeout(budget):
                 if handle.returncode is not None:
                     outcome = _VerifyOutcome(
                         status="error",
@@ -207,18 +218,28 @@ class JudgeStrategy:
                             )
                         ],
                     )
-                elif not test_cases:
+                elif self.__class__.verify is JudgeStrategy.verify and not test_cases:
+                    # 没有 test_cases、子类也没实现 verify —— 此时**没有任何判据**。
+                    # 绝不能判“通过”：那等于“能 bind 端口就算过”，学生写个空壳即可得分
+                    # （sock-proxy / sock-pinger-server 就是这么空转过）。
+                    # 宁可报错也不要给出无依据的结论。
                     outcome = _VerifyOutcome(
-                        status="passed",
+                        status="error",
                         checks=[
                             EvaluationCheck(
-                                name="服务启动",
-                                passed=True,
-                                detail="无测试用例，仅校验服务成功启动",
+                                name="判题配置",
+                                passed=False,
+                                detail=(
+                                    "该练习没有配置 test_cases，判题无从校验。"
+                                    "请在 mock_data 中补 test_cases，或为该策略实现 verify()。"
+                                ),
                             )
                         ],
                     )
                 else:
+                    # 注意：这里**不再要求 test_cases 非空** —— 有的策略（如 ProxyStrategy、
+                    # UdpPingerServerStrategy）的 verify 自带固定判据，不依赖 test_cases，
+                    # 必须让它跑起来，否则就是空转。
                     outcome = await self.verify(handle, host, port, test_cases, REQUEST_TIMEOUT_SECONDS)
         except asyncio.TimeoutError:
             outcome = _VerifyOutcome(
@@ -227,7 +248,7 @@ class JudgeStrategy:
                     EvaluationCheck(
                         name="硬超时",
                         passed=False,
-                        detail=f"整体执行超过 {EXEC_TIMEOUT_SECONDS}s",
+                        detail=f"整体执行超过 {budget}s",
                     )
                 ],
             )
@@ -258,15 +279,17 @@ class WebServerStrategy(JudgeStrategy):
     test_case 约定：``input`` = 请求行（如 ``GET /index.html HTTP/1.1``），
     ``expected`` = 期望状态行（如 ``HTTP/1.1 200 OK``）。
 
-    教材 ``WebServer.py`` 把端口硬编码为 80、并从工作目录读取文件，因此判题固定用
-    80 端口，运行前写入一个 ``index.html`` 供 ``GET /index.html`` 返回 200。
-    这些判题细节与学生可见的参考答案/初始模板解耦，编辑器里仍是干净的教材代码。
+    端口**不固定**：用传入的 ``port``（由 :func:`find_free_port` 分配的空闲高位端口），
+    基类会把它同时通过 ``--port`` 参数和 ``PORT`` 环境变量交给学生的服务器。
+    判题前写入一个 ``index.html``，供 ``GET /index.html`` 返回 200。
+
+    为什么不能固定成 80：生产宿主机上 nginx 占着 ``0.0.0.0:80``，且
+    ``net.ipv4.ip_unprivileged_port_start`` 默认为 1024 —— 非特权用户既抢不到 80、
+    也无权绑 80，固定端口会让这个 Lab 在最需要它的地方必然失败。
     """
 
     name = "web_server"
     script_filename = "ch2_web_server.py"
-    # 教材 Web 服务器把端口硬编码为 80，判题固定用该端口
-    fixed_port = 80
 
     async def judge(self, script, test_cases, *, host, port, on_log=None):
         # 教材服务器从工作目录读取文件（GET /index.html -> index.html），提前备好。
@@ -274,9 +297,7 @@ class WebServerStrategy(JudgeStrategy):
             "<!doctype html><html><body><h1>Hello</h1></body></html>",
             encoding="utf-8",
         )
-        return await super().judge(
-            script, test_cases, host=host, port=self.fixed_port, on_log=on_log
-        )
+        return await super().judge(script, test_cases, host=host, port=port, on_log=on_log)
 
     async def verify(self, proc, host, port, test_cases, request_timeout):
         checks: list[EvaluationCheck] = []
@@ -381,8 +402,10 @@ class UdpPingerClientStrategy(JudgeStrategy):
         )
         await asyncio.sleep(0.5)  # 等待服务器完成 bind
 
-        # 2. 学生客户端（不可信代码）：走沙箱 + 硬超时；客户端硬编码 127.0.0.1:12000，不传 --port。
-        client = await _spawn_untrusted(script)
+        # 2. 学生客户端（不可信代码）：走沙箱 + 硬超时。
+        #    端口仍是 12000（高位、实测无冲突，见 fixed_port），但仍然通过 PORT 注入 ——
+        #    学生若从 os.environ 读端口，拿到的值与硬编码 12000 一致，两种写法都能过。
+        client = await _spawn_untrusted(script, port)
 
         async def _drain(reader, sink, stream):
             while True:
@@ -450,6 +473,9 @@ class UdpPingerServerStrategy(JudgeStrategy):
 
     name = "udp_pinger_server"
     script_filename = "ch2_udp_pinger_server.py"
+    # 11 次 UDP ping：丢包时每次等满 UDP_PING_TIMEOUT_SECONDS(0.5s)，实测 7 次丢包
+    # ≈ 3.5s；再叠加学生服务器启动慢导致的前几次超时，5s 全局预算会偶发不够。
+    exec_timeout_seconds = 12.0
 
     async def verify(self, proc, host, port, test_cases, request_timeout):
         loop = asyncio.get_running_loop()
@@ -458,7 +484,9 @@ class UdpPingerServerStrategy(JudgeStrategy):
 
         for i in range(11):
             payload = f"ping {i}".encode()
-            reply = await _udp_ping_once(loop, host, port, payload, timeout=1.0)
+            reply = await _udp_ping_once(
+                loop, host, port, payload, timeout=UDP_PING_TIMEOUT_SECONDS
+            )
             if reply is not None:
                 received += 1
                 if reply == payload.upper():
@@ -477,22 +505,21 @@ class UdpPingerServerStrategy(JudgeStrategy):
 
 
 class WebClientStrategy(JudgeStrategy):
-    """学生写 TCP Web 客户端（教材风格）：硬编码 127.0.0.1:80，发 GET /hello.html。
+    """学生写 TCP Web 客户端：连本机参考 HTTP 服务器，发 GET /hello.html。
 
-    后端在 127.0.0.1:80 起 HTTP 参考服务器（/hello.html -> 200），直接运行学生客户端
-    （不传额外参数），判题以“服务器收到 /hello.html 且 客户端打印了 200 OK”为通过。
+    后端用传入的 ``port``（:func:`find_free_port` 分配的空闲高位端口）起参考服务器
+    （/hello.html -> 200），并把同一个端口通过 ``PORT`` 环境变量交给学生客户端，
+    以“服务器收到 /hello.html 且客户端打印了 200 OK”为通过。
 
-    说明：客户端代码硬编码端口 80（教材示例写法），因此参考服务器也必须监听 80 端口；
-    若 80 端口被占用会导致判题失败。
+    端口不固定：生产宿主机上 nginx 占着 ``0.0.0.0:80``，非特权用户也绑不了 80
+    （见 WebServerStrategy 的说明）。
     """
 
     name = "web_client"
     script_filename = "ch2_web_client.py"
-    fixed_port = 80
     client_timeout_seconds = 10.0
 
     async def judge(self, script, test_cases, *, host, port, on_log=None):
-        port = self.fixed_port  # 客户端硬编码 80，忽略传入的随机端口
         started = time.monotonic()
         logs: list[str] = []
         client_stdout: list[str] = []
@@ -549,8 +576,9 @@ class WebClientStrategy(JudgeStrategy):
                 [EvaluationCheck(name="参考服务器", passed=False, detail=f"{port} 端口启动失败")],
             )
 
-        # 3. 运行学生客户端（教材风格：硬编码 127.0.0.1:80 + GET /hello.html，无需传参）—— 走沙箱
-        client = await _spawn_untrusted(script)
+        # 3. 运行学生客户端（教材风格：连 127.0.0.1 的 PORT + GET /hello.html）—— 走沙箱。
+        #    端口通过 PORT 环境变量注入，学生代码从 os.environ 读。
+        client = await _spawn_untrusted(script, port)
 
         async def _drain_client(reader, sink, stream):
             while True:
@@ -700,17 +728,20 @@ class PingCommandStrategy(JudgeStrategy):
 class SmtpStrategy(JudgeStrategy):
     """学生写 SMTP 客户端：后端跑参考 SMTP 服务器，客户端完成 SMTP 对话。
 
-    客户端约定：连接 127.0.0.1:25，发送 HELO / MAIL FROM / RCPT TO / DATA / 正文 / QUIT。
+    客户端约定：连本机参考服务器的 ``PORT``（从环境变量读），依次发
+    ``HELO / MAIL FROM / RCPT TO / DATA / 正文 / QUIT``。
     判题以“服务器收到完整 SMTP 对话”为通过。
+
+    端口不固定：:func:`find_free_port` 分配空闲高位端口后，既用于起参考服务器，
+    也通过 ``PORT`` 环境变量交给学生客户端。固定 25 端口在 Linux 上会因
+    ``ip_unprivileged_port_start=1024`` 直接绑不上（非特权用户无权绑 <1024 的端口）。
     """
 
     name = "smtp"
     script_filename = "ch2_smtp.py"
-    fixed_port = 25  # 教材客户端硬编码 25 端口
     client_timeout_seconds = 10.0
 
     async def judge(self, script, test_cases, *, host, port, on_log=None):
-        port = self.fixed_port
         started = time.monotonic()
         logs: list[str] = []
         client_stdout: list[str] = []
@@ -737,7 +768,7 @@ class SmtpStrategy(JudgeStrategy):
                 stderr="\n".join(client_stderr),
             )
 
-        # 1. SMTP 参考服务器（25 端口）
+        # 1. SMTP 参考服务器（端口由 find_free_port 分配）
         server_script = Path(__file__).resolve().parents[2] / "judge" / "servers" / "ch2_smtp_server.py"
         server_proc = await asyncio.create_subprocess_exec(
             sys.executable, str(server_script), "--port", str(port),
@@ -751,7 +782,7 @@ class SmtpStrategy(JudgeStrategy):
             return _result(
                 "error",
                 f"无法在 {port} 端口启动 SMTP 参考服务器（端口可能被占用）",
-                [EvaluationCheck(name="参考服务器", passed=False, detail="25 端口启动失败")],
+                [EvaluationCheck(name="参考服务器", passed=False, detail=f"{port} 端口启动失败")],
             )
 
         async def _drain_server():
@@ -765,8 +796,8 @@ class SmtpStrategy(JudgeStrategy):
 
         pump_server = asyncio.create_task(_drain_server())
 
-        # 2. 学生客户端（无参数：硬编码 127.0.0.1:25）—— 走沙箱
-        client = await _spawn_untrusted(script)
+        # 2. 学生客户端（连 127.0.0.1 的 PORT）—— 走沙箱，端口用 PORT 环境变量注入
+        client = await _spawn_untrusted(script, port)
 
         async def _drain_client(reader, sink, stream):
             while True:
@@ -818,34 +849,93 @@ class SmtpStrategy(JudgeStrategy):
         )
 
 
+# 代理练习的源站端口是每次判题现分配的，而基类只会把“监听端口”交给 build_command，
+# 所以用 ContextVar 把这个额外参数传下去：它按 asyncio 任务隔离，同一 Lab 并发判题也不会串。
+_PROXY_ORIGIN_PORT: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "proxy_origin_port", default=None
+)
+
+
 class ProxyStrategy(JudgeStrategy):
     """学生写 Web 代理服务器：后端跑源服务器，代理转发请求。
 
-    代理约定：从 ``sys.argv[1]`` 读取监听端口；收到请求后转发给源服务器（127.0.0.1:80）。
-    判题以“代理能返回源服务器的内容”为通过。
+    代理约定：``sys.argv[1]`` = 代理自己的监听端口，``sys.argv[2]`` = 源服务器端口。
+    收到形如 ``GET /127.0.0.1/hello.html HTTP/1.0`` 的请求后，转发给
+    ``127.0.0.1:<argv[2]>``。判题以“代理返回了源服务器的真实内容”为通过。
+
+    两个端口都不固定：监听端口由 :func:`find_free_port` 分配，源站端口另分配一个空闲
+    端口并经 ``sys.argv[2]`` 交给学生的代理。
     """
 
     name = "proxy"
     script_filename = "ch2_proxy.py"
-    origin_port = 80
     read_timeout = 10.0
 
     def build_command(self, script, port):
-        return [sys.executable, str(script), str(port)]
+        command = [sys.executable, str(script), str(port)]
+        origin_port = _PROXY_ORIGIN_PORT.get()
+        if origin_port is not None:
+            command.append(str(origin_port))
+        return command
 
     async def judge(self, script, test_cases, *, host, port, on_log=None):
-        # 先起源服务器（80 端口，代理会连接它）
-        origin_script = Path(__file__).resolve().parents[2] / "judge" / "servers" / "ch2_proxy_origin_server.py"
+        started = time.monotonic()
+        origin_port = find_free_port(host)
+        origin_script = (
+            Path(__file__).resolve().parents[2] / "judge" / "servers" / "ch2_proxy_origin_server.py"
+        )
         origin_proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(origin_script), "--port", str(self.origin_port),
+            sys.executable, str(origin_script), "--port", str(origin_port),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             start_new_session=True,
         )
         await asyncio.sleep(0.5)
+        token = _PROXY_ORIGIN_PORT.set(origin_port)
         try:
+            # 源站必须真的起来了才谈得上判题。以前这里只看 sleep、不查存活：源站绑不上
+            # 端口时判题会照常往下跑，最后给出误导性结论（学生代理连不上源站，却被记成
+            # 别的原因；甚至可能借学生代码里的 WEB/ 缓存分支“空转通过”）。
+            if origin_proc.returncode is not None:
+                detail = f"{origin_port} 端口启动失败，判题无法进行"
+                origin_output = await _drain_dead_proc(origin_proc)
+                if origin_output:
+                    detail = f"{detail}：{origin_output[:300]}"
+                return EvaluationResult(
+                    passed=False,
+                    status="error",
+                    summary=f"无法在 {origin_port} 端口启动源服务器（端口可能被占用）",
+                    port=port,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    checks=[EvaluationCheck(name="源服务器", passed=False, detail=detail)],
+                )
             return await super().judge(script, test_cases, host=host, port=port, on_log=on_log)
         finally:
+            _PROXY_ORIGIN_PORT.reset(token)
             await _terminate_proc(origin_proc)
+
+    async def _read_until_marker(self, reader: asyncio.StreamReader, marker: bytes) -> bytes:
+        """读到连接结束、超时、或已经出现 marker 为止。
+
+        学生的代理分几次 ``send`` 是常态（教材写法就是“状态行 / 头 / 正文”三段），
+        所以不能只读一次；读到 marker 就提前收工，免得为了等 EOF 白等满 read_timeout。
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.read_timeout
+        buffered = b""
+        while len(buffered) < 64 * 1024:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            try:
+                chunk = await asyncio.wait_for(reader.read(8192), timeout=remaining)
+            except asyncio.TimeoutError:
+                break
+            if not chunk:
+                break
+            buffered += chunk
+            if marker in buffered:
+                break
+        return buffered
 
     async def verify(self, proc, host, port, test_cases, request_timeout):
         # 请求路径带 host，符合教材代理的解析格式（GET /host/file HTTP/1.0）
@@ -862,7 +952,11 @@ class ProxyStrategy(JudgeStrategy):
         try:
             writer.write(raw)
             await writer.drain()
-            data = await asyncio.wait_for(reader.read(8192), timeout=self.read_timeout)
+            # 必须一直读到连接结束（或超时）为止，不能只 read() 一次：学生的代理很可能
+            # 分多次 send（教材写法就是“先状态行、再头、再正文”三段），单次 read() 拿到
+            # 第一段就返回，于是“响应里没有源站内容”被误判为失败。
+            # 实测这份参考答案在单次 read 下通过率只有 2/6。
+            data = await self._read_until_marker(reader, b"PROXY_ORIGIN_HELLO")
         except (OSError, asyncio.TimeoutError) as exc:
             return _VerifyOutcome(
                 status="failed",
@@ -1134,21 +1228,39 @@ async def _request_with_retry(
             await asyncio.sleep(0.3)
 
 
-async def _spawn_untrusted(script: Path) -> SandboxHandle:
+async def _spawn_untrusted(script: Path, port: int = 0) -> SandboxHandle:
     """启动“学生提交的代码”——一律走 :func:`start_sandbox`，不要用裸的 create_subprocess_exec。
 
     走沙箱才能同时拿到三样东西：命名空间隔离（bwrap）、内存/CPU/进程数上限、
     以及只含最小变量的环境（不再把后端进程的全部环境变量透传给不可信代码）。
 
-    注意：这些 Lab 的学生客户端按教材写法硬编码连 ``127.0.0.1``，所以沙箱**必须保留网络命名空间**
+    ``port`` 会经 :class:`SandboxSpec` 变成沙箱里的 ``PORT`` 环境变量 —— 这是学生客户端
+    得知“参考服务器在哪个端口”的正式途径（端口是每次判题现分配的空闲端口，不固定）。
+
+    注意：这些 Lab 的学生客户端按教材写法连 ``127.0.0.1``，所以沙箱**必须保留网络命名空间**
     —— 这正是 sandbox.py 里刻意不加 ``--unshare-net`` 的原因。
     """
     handle = await start_sandbox(
-        SandboxSpec(command=[sys.executable, str(script)], cwd=str(script.parent))
+        SandboxSpec(command=[sys.executable, str(script)], cwd=str(script.parent), port=port)
     )
     if handle is None:
         raise RuntimeError("无法启动判题沙箱进程")
     return handle
+
+
+async def _drain_dead_proc(proc: asyncio.subprocess.Process, timeout: float = 2.0) -> str:
+    """读出一个已经退出的子进程的合并输出。
+
+    用途是把“参考服务器为什么起不来”写进判题结论 —— 只报“端口启动失败”而不带原因，
+    排查时还得去翻日志。进程已退出，管道会立刻 EOF，所以正常不会真等满 timeout。
+    """
+    if proc.stdout is None:
+        return ""
+    try:
+        raw = await asyncio.wait_for(proc.stdout.read(), timeout=timeout)
+    except (asyncio.TimeoutError, OSError):
+        return ""
+    return raw.decode("utf-8", errors="replace").strip()
 
 
 async def _terminate_proc(proc: asyncio.subprocess.Process, grace: float = 2.0) -> None:
@@ -1190,11 +1302,17 @@ async def _udp_ping_once(loop, host, port, payload, timeout):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setblocking(False)
     try:
-        await loop.sock_sendto(sock, payload, (host, port))
         try:
+            await loop.sock_sendto(sock, payload, (host, port))
             data, _ = await asyncio.wait_for(loop.sock_recvfrom(sock, 1024), timeout)
             return data
         except asyncio.TimeoutError:
+            return None
+        except OSError:
+            # 对端没有 UDP 监听时属于「没回应」，不是判题故障：
+            # Windows 会因 ICMP port unreachable 在 recvfrom 上抛
+            # ConnectionResetError(WinError 10054)（Linux 则是安静超时，不回错）。
+            # 不接住它，学生交一个绑 TCP 端口的程序就会让接口 500。
             return None
     finally:
         sock.close()

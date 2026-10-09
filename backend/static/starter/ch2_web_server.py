@@ -1,7 +1,12 @@
 from socket import *
+import os
+
+# 监听端口从环境变量 PORT 读取：判题时会注入一个空闲端口（不固定，避免和宿主机上
+# 已有的服务撞车，比如 nginx 占着的 80）。直接本地自测时用默认值 8080。
+serverPort = int(os.environ.get("PORT", 8080))
 
 # TODO: 1. 创建 TCP socket
-# TODO: 2. 设置端口并绑定
+# TODO: 2. 绑定 ("", serverPort)
 # TODO: 3. 开始监听
 
 while True:

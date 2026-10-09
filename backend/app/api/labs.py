@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Request
 
 from ..core.config import API_PREFIX
 from ..mock_data import get_lab
-from ..schemas import ErrorResponse, EvaluationResult, Lab, RunRequest
+from ..schemas import ErrorResponse, EvaluationCheck, EvaluationResult, Lab, RunRequest
 from ..services.evaluator import evaluate_submission
 from ..services.guard import (
     RATE_WINDOW_SECONDS,
@@ -19,6 +20,8 @@ from ..services.guard import (
     enter_judge,
     leave_judge,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix=API_PREFIX, tags=["labs"])
 
@@ -91,5 +94,27 @@ async def run_lab(
 
     try:
         return await evaluate_submission(lab_id, body.code, lab.test_cases)
+    except Exception as exc:  # noqa: BLE001
+        # 判题是整站唯一执行不可信代码的地方，学生交上来的东西五花八门。
+        # 任何未预期异常都不该变成对用户毫无信息量的 500：
+        # 完整 traceback 记到服务端日志，对外返回一个可读的失败结果。
+        logger.exception("判题未预期异常：lab=%s", lab_id)
+        return EvaluationResult(
+            passed=False,
+            status="error",
+            summary=f"判题服务内部错误：{type(exc).__name__}",
+            port=0,
+            duration_ms=0,
+            checks=[
+                EvaluationCheck(
+                    name="判题",
+                    passed=False,
+                    detail="判题服务遇到未预期错误，请稍后重试；若持续出现请把这段提交反馈给管理员。",
+                )
+            ],
+            logs=[],
+            stdout="",
+            stderr="",
+        )
     finally:
         leave_judge()

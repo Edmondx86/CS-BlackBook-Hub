@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from app.services import evaluator, sandbox
@@ -117,7 +119,7 @@ class UntrustedSpawnTest(unittest.TestCase):
 
 
 class _FakeResource:
-    """假的 resource 模块：如实模拟「只接受整数」，并记录调用。"""
+    """假的 resource 模块：如实模拟“只接受整数”，并记录调用。"""
 
     RLIMIT_AS = 1
     RLIMIT_CPU = 2
@@ -180,6 +182,143 @@ class PreexecRlimitTest(unittest.TestCase):
     def test_limit_failure_never_escapes_preexec(self) -> None:
         """单个 rlimit 设不上不能让 Popen 失败（某些内核/容器会拒绝）。"""
         self._run_preexec(_FakeResource(always_raise=RuntimeError("operation not permitted")))
+
+
+class FixedPortInvariantTest(unittest.TestCase):
+    """任何策略都不许把端口固定在 1024 以下。
+
+    生产宿主机上 ``net.ipv4.ip_unprivileged_port_start`` 默认是 1024，判题以非特权用户
+    （csbb）运行，**根本绑不了 <1024 的端口**；80 还额外被 nginx 占着。
+    历史上 WebServer / WebClient 固定 80、Smtp 固定 25，到了真实服务器上这三个 Lab 全废，
+    而本机（Windows 上端口随便绑）永远是绿的 —— 所以用测试把这条封死。
+    """
+
+    def test_no_strategy_uses_privileged_fixed_port(self) -> None:
+        offenders: list[str] = []
+        for lab_id, strategy in evaluator.STRATEGIES.items():
+            for attr in ("fixed_port", "origin_port"):
+                value = getattr(strategy, attr, None)
+                if value is not None and value < 1024:
+                    offenders.append(f"{lab_id}.{attr}={value}")
+        self.assertEqual(offenders, [], f"这些策略用了 <1024 的固定端口：{offenders}")
+
+
+class _StubHandle:
+    """假沙箱句柄：只满足 JudgeStrategy.judge() 用到的接口。"""
+
+    def __init__(self) -> None:
+        self.returncode = None
+        self.stdout = asyncio.StreamReader()
+        self.stderr = asyncio.StreamReader()
+        self.stdout.feed_eof()
+        self.stderr.feed_eof()
+
+    async def stop(self) -> None:
+        return None
+
+
+class _NoVerifyStrategy(evaluator.JudgeStrategy):
+    """子类既不实现 verify、也没有 test_cases —— 此时**没有任何判据**。"""
+
+    name = "test_no_verify"
+    script_filename = "noop.py"
+
+
+class _VerifyStrategy(evaluator.JudgeStrategy):
+    """子类自带判据（实现 verify），即便 test_cases 为空也必须让它跑起来。"""
+
+    name = "test_verify"
+    script_filename = "noop.py"
+    called = False
+
+    async def verify(self, proc, host, port, test_cases, request_timeout):
+        type(self).called = True
+        return evaluator._VerifyOutcome(
+            status="passed",
+            checks=[evaluator.EvaluationCheck(name="自有判据", passed=True, detail="ok")],
+        )
+
+
+class BaseJudgeFallbackTest(unittest.TestCase):
+    """没有判据时必须报错，绝不能“空转通过”。
+
+    以前基类在 ``test_cases`` 为空时会直接判 passed（等于“能 bind 端口就算过”），
+    sock-proxy / sock-pinger-server 就是这么空转的：学生写个空壳也能得分。
+    """
+
+    def setUp(self) -> None:
+        self._orig_spawn = evaluator.start_sandbox
+        self._orig_wait = evaluator.STARTUP_WAIT_SECONDS
+        evaluator.STARTUP_WAIT_SECONDS = 0  # 测试里不必真的等启动
+        _VerifyStrategy.called = False
+
+    def tearDown(self) -> None:
+        evaluator.start_sandbox = self._orig_spawn
+        evaluator.STARTUP_WAIT_SECONDS = self._orig_wait
+
+    def _run(self, strategy, test_cases):
+        async def fake_start(spec):
+            return _StubHandle()
+
+        evaluator.start_sandbox = fake_start
+        script = Path("/tmp/judge-x/main.py")
+        return asyncio.run(strategy.judge(script, test_cases, host="127.0.0.1", port=12345))
+
+    def test_missing_criteria_returns_error_not_passed(self) -> None:
+        result = self._run(_NoVerifyStrategy(), [])
+        self.assertFalse(result.passed, "没有任何判据时绝不能判通过")
+        self.assertEqual(result.status, "error")
+
+    def test_verify_runs_even_without_test_cases(self) -> None:
+        result = self._run(_VerifyStrategy(), [])
+        self.assertTrue(_VerifyStrategy.called, "自带判据的 verify 必须被调用，不能空转")
+        self.assertTrue(result.passed)
+
+
+class ProxyReadUntilMarkerTest(unittest.TestCase):
+    """代理响应必须读到出现标记为止，不能只 read() 一次。
+
+    教材风格的代理是分三段 send 的（状态行 / 头 / 正文），单次 ``read(n)`` 只要有
+    一个字节就返回，于是只拿到第一段、判题报“响应中未包含源服务器内容”。
+    实测这份参考答案在单次 read 下通过率只有 2/6，改成分段读到标记后 6/6。
+    """
+
+    MARKER = b"PROXY_ORIGIN_HELLO"
+    FRAGMENTS = (b"HTTP/1.1 200 OK\r\n", b"Content-Type:text/html\r\n\r\n", MARKER)
+
+    @staticmethod
+    def _reader_with_fragments(delay: float) -> tuple[asyncio.StreamReader, "asyncio.Task"]:
+        reader = asyncio.StreamReader()
+
+        async def feed() -> None:
+            for part in ProxyReadUntilMarkerTest.FRAGMENTS:
+                reader.feed_data(part)
+                await asyncio.sleep(delay)
+            reader.feed_eof()
+
+        return reader, asyncio.create_task(feed())
+
+    def test_collects_marker_arriving_in_later_fragments(self) -> None:
+        strategy = evaluator.ProxyStrategy()
+
+        async def run() -> bytes:
+            reader, task = self._reader_with_fragments(0.05)
+            data = await strategy._read_until_marker(reader, self.MARKER)
+            await task
+            return data
+
+        self.assertIn(self.MARKER, asyncio.run(run()))
+
+    def test_single_read_is_not_enough(self) -> None:
+        """反向对照：单次 read() 只拿到第一段 —— 这正是被修掉的那个 bug。"""
+
+        async def run() -> bytes:
+            reader, task = self._reader_with_fragments(0.05)
+            data = await reader.read(8192)
+            await task
+            return data
+
+        self.assertNotIn(self.MARKER, asyncio.run(run()))
 
 
 if __name__ == "__main__":

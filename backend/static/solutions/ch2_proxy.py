@@ -4,11 +4,14 @@ import sys
 import os
 
 if len(sys.argv) <= 1:
-	print('Usage : "python ProxyServer.py server_ip"\n[server_ip : It is the IP Address Of Proxy Server')
+	print('Usage : "python ProxyServer.py proxy_port [origin_port]"\n[proxy_port  : 代理自己的监听端口]\n[origin_port : 源服务器端口，默认 8080]')
 	sys.exit(2)
 # Create a server socket, bind it to a port and start listening
 tcpSerSock = socket(AF_INET, SOCK_STREAM)
 tcpSerPort = int(sys.argv[1])
+# 源服务器端口：判题时由 argv[2] 传进来（每次现分配的空闲端口，不固定 —— 避免和
+# 宿主机上已有的服务撞车，比如 nginx 占着的 80）。没给就用默认值，方便本地自测。
+originServerPort = int(sys.argv[2]) if len(sys.argv) > 2 else 8080
 tcpSerSock.bind(("", tcpSerPort))
 print(tcpSerPort)
 tcpSerSock.listen(10)
@@ -48,14 +51,14 @@ while 1:
 			hostn = filename.replace("www.","",1)
 			print("hostn:", hostn)
 			try:
-				# Connect to the socket to port 80
+				# Connect to the source server (port comes from argv[2])
 				serverName = hostn.partition("/")[0]
-				serverPort = 80
+				serverPort = originServerPort
 				print((serverName, serverPort))
 				c.connect((serverName, serverPort))
 				askFile = ''.join(filename.partition('/')[1:])
 				print("askFile:", askFile)
-				# Create a temporary file on this socket and ask port 80
+				# Create a temporary file on this socket and ask the source server
 				# for the file requested by the client
 				fileobj = c.makefile('rwb', 0)
 				fileobj.write("GET ".encode() + askFile.encode() + " HTTP/1.0\r\nHost: ".encode() + serverName.encode() + "\r\n\r\n".encode())

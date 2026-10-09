@@ -1,8 +1,11 @@
 #import socket module
+import os
 from socket import *
 serverSocket = socket(AF_INET, SOCK_STREAM)
 #Prepare a sever socket
-serverPort = 80
+# 监听端口从环境变量 PORT 读取：判题时会注入一个空闲端口，避免和宿主机上已有的服务
+# （比如 nginx 占着的 80）撞车；直接本地自测时用默认值 8080。
+serverPort = int(os.environ.get("PORT", 8080))
 serverSocket.bind(("", serverPort))
 serverSocket.listen(1)
 while True:
