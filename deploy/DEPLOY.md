@@ -29,19 +29,33 @@
 ping csblackbookhub.com        # 或 nslookup csblackbookhub.com
 ```
 
-### 0.2 DNS 解析
+### 0.2 DNS 解析 ✅ 已完成
 
-到域名控制台添加 A 记录，指向服务器公网 IP：
+两个域名都已解析到同一台服务器（实测确认）：
 
 | 记录类型 | 主机记录 | 记录值 |
 | --- | --- | --- |
-| A | `@` | 你的服务器公网 IP |
-| A | `www` | 你的服务器公网 IP |
+| A | `@` | `47.103.218.113` |
+| A | `www` | `47.103.218.113` |
 
-### 0.3 安全组放行
+```bash
+nslookup csblackbookhub.com        # 应返回 47.103.218.113
+nslookup www.csblackbookhub.com    # 同上
+```
 
-阿里云控制台的**安全组**里放行 **80** 与 **443**（轻量服务器默认可能只开了 22）。
-Certbot 申请证书需要 80 端口能被公网访问。
+> `nslookup` 显示「非权威应答」是正常的 —— 那只是递归解析器的缓存答案。
+
+### 0.3 安全组放行 ✅ 已完成
+
+实测从公网探测：**22 / 80 / 443 均可达**，**8000 不可达**（正确 —— uvicorn 只监听回环，
+公网绝不该通）。无需再改安全组。
+
+```bash
+# 想复核的话，在本地机器执行
+for p in 22 80 443; do
+  timeout 5 bash -c "cat < /dev/null > /dev/tcp/csblackbookhub.com/$p" && echo "$p 通" || echo "$p 不通"
+done
+```
 
 ### 0.4 Python 版本必须是 3.11+
 
@@ -262,36 +276,71 @@ journalctl -u csbb-backend | grep -i bwrap
 > **bwrap**（命名空间 + 只读根 + 私有 /tmp）→ **systemd**（`ProtectSystem` / `NoNewPrivileges` /
 > 内存与 CPU 上限）→ **iptables 按 uid 封锁出站**（第 7 节）。
 
-## 6. 配置 nginx + HTTPS
+## 6. 配置 nginx
+
+> **⚠️ 这台服务器的 nginx 与证书都已经就绪了**，不要按「先装配置、再 certbot 签发」的老流程走 ——
+> 那会丢掉已有的 HTTPS 配置。实测现状：
+>
+> | 项 | 现状 |
+> | --- | --- |
+> | nginx | `nginx/1.24.0 (Ubuntu)` 已在跑 |
+> | HTTP → HTTPS | 已配 301 跳转 |
+> | 证书 | Let's Encrypt，`CN=csblackbookhub.com`，**SAN 含 `www`** |
+> | 首页 | 一个占位页「黑皮书技术笔记」 |
+> | `/api/` | 404（还没有反代配置，后端也没部署） |
+>
+> 仓库里的 [nginx-cs-blackbook.conf](nginx-cs-blackbook.conf) **已自带 443 段**
+> （证书路径按 certbot 默认布局写好），所以可以整体替换现有站点配置。
+
+### 6.1 先看清现状，再替换
 
 ```bash
-# 2.1 停掉发行版自带的默认站点（本服务器 nginx 专供本项目）
-rm -f /etc/nginx/sites-enabled/default
+# 找出当前承载这个域名的配置文件（可能在 conf.d/ 或 sites-enabled/）
+nginx -T 2>/dev/null | grep -n 'server_name csblackbookhub'
+ls -l /etc/nginx/conf.d/ /etc/nginx/sites-enabled/
 
-# 2.2 装站点配置（server_name 已填好 csblackbookhub.com / www.csblackbookhub.com）
-cp /srv/cs-blackbook/deploy/nginx-cs-blackbook.conf /etc/nginx/conf.d/
-nginx -t && systemctl reload nginx
+# 确认证书目录名（若不是 csblackbookhub.com，要改新配置里的 ssl_certificate 两行）
+ls -l /etc/letsencrypt/live/
 
-# 2.3 先用 HTTP 确认站点通了，再申请证书（证书申请需要 80 可达）
-curl -s -o /dev/null -w 'http  %{http_code}\n' http://csblackbookhub.com/
-curl -s -o /dev/null -w 'api   %{http_code}\n' http://csblackbookhub.com/api/v1/chapters
-
-# 2.4 申请证书并自动改写为 443（certbot 会插入 listen 443 与证书路径）
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d csblackbookhub.com -d www.csblackbookhub.com
-# 提示选择跳转方式时选 “Redirect”，即把 HTTP 全量 301 到 HTTPS
-
-systemctl status certbot.timer        # 确认自动续期已启用
-certbot renew --dry-run               # 试跑一次续期，确认不会到期失效
+# 备份现有配置
+cp -a /etc/nginx/conf.d/cs-blackbook.conf /root/cs-blackbook.conf.bak 2>/dev/null || \
+  cp -a /etc/nginx/sites-enabled/default /root/nginx-default.bak 2>/dev/null || true
 ```
 
-> 如果 2.3 的 curl 打不开：先回第 0.1 节确认备案，再确认安全组放行 80/443。
+### 6.2 装新配置并替换掉旧站点
 
-### 6.1 证书生效后再加 HSTS（可选，但别提前加）
+```bash
+# 装仓库里的配置（已含 443 段与证书路径）
+cp /srv/cs-blackbook/deploy/nginx-cs-blackbook.conf /etc/nginx/conf.d/cs-blackbook.conf
+
+# ⚠️ 必须移除旧的站点配置，否则 server_name 重复，nginx 只会用先加载的那个
+rm -f /etc/nginx/sites-enabled/default
+# 如果 `ls /etc/nginx/conf.d/` 里还有别的承载本域名的 .conf，也一并移走
+
+nginx -t && systemctl reload nginx
+```
+
+> `nginx -t` **失败也不会导致线上中断** —— reload 之前 nginx 仍在用内存里的旧配置，
+> 所以放心改、改到 `nginx -t` 通过再 reload。失败最常见的原因是证书路径写错，按 6.1 核对。
+
+### 6.3 确认 HTTPS 与续期
+
+```bash
+curl -s -o /dev/null -w 'http  %{http_code} -> %{redirect_url}\n' http://csblackbookhub.com/
+curl -s -o /dev/null -w 'https %{http_code}\n' https://csblackbookhub.com/
+curl -s -o /dev/null -w 'www   %{http_code}\n' https://www.csblackbookhub.com/
+curl -s -o /dev/null -w 'api   %{http_code}\n' https://csblackbookhub.com/api/v1/chapters
+
+systemctl status certbot.timer        # 自动续期是否启用
+certbot renew --dry-run               # 试跑一次续期，确认换个 nginx 配置后仍然能续
+```
+
+证书是 2026-12-20 到期，续期若失效会在到期日当天整站打不开 —— 所以 `--dry-run` 这一步别省。
+
+### 6.4 HSTS（确认 HTTPS 正常后再加）
 
 HSTS 会让浏览器**强制**只用 HTTPS，一旦开启且证书出问题，用户短时间内无法回退。
-所以**确认 HTTPS 正常后再加**，加到 `nginx-cs-blackbook.conf` 的 server 块里
-（certbot 生成的 443 server 块）然后 reload：
+新配置里已经预留了注释掉的那一行，确认无误后取消注释再 reload：
 
 ```nginx
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
