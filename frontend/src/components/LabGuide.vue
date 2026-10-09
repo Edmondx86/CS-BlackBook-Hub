@@ -60,19 +60,32 @@ const guideHtml = computed(() => md.render(props.lab.guide))
 const articleEl = ref(null)
 const activeSection = ref(0)
 let scrollHost = null
+let resizeObserver = null
+
+// 认为「标题滚到视口顶部 90px 以内」就算进入了这一节
+const VIEWPORT_OFFSET = 90
 
 function headings() {
   return articleEl.value ? [...articleEl.value.querySelectorAll('h2')] : []
 }
 
+// 基准点必须是**滚动容器（视口）的顶边**，不能用正文容器的顶边：
+// 正文和标题是一起滚的，两者之差恒定不变，拿它比较的话 activeSection 永远不会更新
+// （之前的 bug —— 目录只高亮第一项）。
 function syncActive() {
   const list = headings()
   if (!list.length) return
-  const base = articleEl.value.getBoundingClientRect().top
+  const viewportTop = scrollHost ? scrollHost.getBoundingClientRect().top : 0
+  const threshold = viewportTop + VIEWPORT_OFFSET
   let index = 0
   list.forEach((h, i) => {
-    if (h.getBoundingClientRect().top - base <= 90) index = i
+    if (h.getBoundingClientRect().top <= threshold) index = i
   })
+  // 滚到底时直接标最后一项：最后一节内容通常不够高，标题到不了视口顶部，
+  // 不加这一条的话末尾几项永远高亮不到。
+  if (scrollHost && scrollHost.scrollTop + scrollHost.clientHeight >= scrollHost.scrollHeight - 4) {
+    index = list.length - 1
+  }
   activeSection.value = index
 }
 
@@ -85,12 +98,24 @@ function goSection(index) {
 
 onMounted(() => {
   scrollHost = articleEl.value?.closest('.overflow-y-auto') ?? null
-  scrollHost?.addEventListener('scroll', syncActive, { passive: true })
+  if (scrollHost) {
+    scrollHost.addEventListener('scroll', syncActive, { passive: true })
+  } else {
+    // 布局变了找不到滚动容器时退回窗口滚动，至少别让高亮彻底失效
+    window.addEventListener('scroll', syncActive, { passive: true })
+  }
+  // 宽度变化（拖拽分栏、窗口缩放）会改变标题的折行位置，高亮需要跟着重算
+  if (typeof ResizeObserver !== 'undefined' && articleEl.value) {
+    resizeObserver = new ResizeObserver(() => syncActive())
+    resizeObserver.observe(articleEl.value)
+  }
   syncActive()
 })
 
 onBeforeUnmount(() => {
   scrollHost?.removeEventListener('scroll', syncActive)
+  window.removeEventListener('scroll', syncActive)
+  resizeObserver?.disconnect()
 })
 
 // ---------------------------------------------------------------------------
