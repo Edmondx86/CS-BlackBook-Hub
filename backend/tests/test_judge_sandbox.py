@@ -10,7 +10,10 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
 import unittest
+from unittest import mock
 
 from app.services import evaluator, sandbox
 
@@ -111,6 +114,72 @@ class UntrustedSpawnTest(unittest.TestCase):
         # 用 Path 的结果比对，避免 Windows 的路径分隔符差异
         self.assertEqual(calls[0].cwd, str(script.parent))
         self.assertEqual(calls[0].command[1], str(script))
+
+
+class _FakeResource:
+    """假的 resource 模块：如实模拟「只接受整数」，并记录调用。"""
+
+    RLIMIT_AS = 1
+    RLIMIT_CPU = 2
+    RLIMIT_NPROC = 3
+
+    def __init__(self, always_raise: BaseException | None = None) -> None:
+        self.calls: list[tuple[int, tuple[int, ...]]] = []
+        self.always_raise = always_raise
+
+    def setrlimit(self, which: int, limits: tuple) -> None:
+        if self.always_raise is not None:
+            raise self.always_raise
+        for value in limits:
+            # 真实的 setrlimit 对 float 抛 TypeError，这里如实复现
+            if not isinstance(value, int):
+                raise TypeError(
+                    f"'{type(value).__name__}' object cannot be interpreted as an integer"
+                )
+        self.calls.append((which, tuple(limits)))
+
+
+class PreexecRlimitTest(unittest.TestCase):
+    """POSIX preexec 里的 rlimit 设置。
+
+    这一类 bug 在 Windows 上**完全不可见** —— ``os.name != "posix"`` 时直接返回 None，
+    ``preexec_fn`` 从不执行 —— 却会让线上每一个判题都 500。实测踩过一次：
+    ``spec.timeout_seconds`` 是 ``5.0``（float），而 ``resource.setrlimit`` 只接受整数，
+    抛出的 ``TypeError`` 既不在 ``(ValueError, OSError)`` 的捕获范围内，又会冲出
+    ``preexec_fn`` 让整个 ``Popen`` 失败，报错还是一句看不出原因的
+    ``subprocess.SubprocessError: Exception occurred in preexec_fn.``
+    （CPython 只把 ``OSError`` 系异常精确回传给父进程）。
+
+    所以这里即使要打桩，也要把两条不变量锁死：传进去的必须是整数；单个 rlimit
+    设不上也不能让判题整个失败。
+    """
+
+    def _run_preexec(self, resource_stub: _FakeResource, spec=None) -> _FakeResource:
+        fake_os = types.SimpleNamespace(name="posix", write=lambda fd, data: None)
+        spec = spec or sandbox.SandboxSpec(
+            command=["python", "/tmp/judge-x/main.py", "--port", "9000"],
+            cwd="/tmp/judge-x",
+            port=9000,
+            timeout_seconds=5.0,  # ← 故意用 float，复现线上情形
+        )
+        with mock.patch.object(sandbox, "os", fake_os), mock.patch.dict(
+            sys.modules, {"resource": resource_stub}
+        ):
+            preexec = sandbox._make_preexec(spec)
+            self.assertIsNotNone(preexec, "POSIX 下必须返回可调用的 preexec")
+            preexec()  # 旧实现在这一行就会抛 TypeError
+        return resource_stub
+
+    def test_float_timeout_is_coerced_to_int(self) -> None:
+        stub = self._run_preexec(_FakeResource())
+        self.assertEqual(len(stub.calls), 3, "三个 rlimit 都应设置成功")
+        for which, limits in stub.calls:
+            for value in limits:
+                self.assertIsInstance(value, int, f"rlimit {which} 收到了非整数 {value!r}")
+
+    def test_limit_failure_never_escapes_preexec(self) -> None:
+        """单个 rlimit 设不上不能让 Popen 失败（某些内核/容器会拒绝）。"""
+        self._run_preexec(_FakeResource(always_raise=RuntimeError("operation not permitted")))
 
 
 if __name__ == "__main__":

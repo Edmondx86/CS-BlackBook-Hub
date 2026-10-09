@@ -186,7 +186,23 @@ def _sanitized_env(spec: SandboxSpec) -> dict[str, str]:
 
 
 def _make_preexec(spec: SandboxSpec):
-    """POSIX 下用 rlimit 限制内存/CPU/进程数；Windows 无此能力，返回 None。"""
+    """POSIX 下用 rlimit 限制内存/CPU/进程数；Windows 无此能力，返回 None。
+
+    ⚠️ 两个坑，都是只在 POSIX 上才会踩到的：
+
+    1. ``resource.setrlimit`` **只接受整数**。传 float（``spec.timeout_seconds`` 是 5.0）
+       会抛 ``TypeError`` —— 而它不在 ``(ValueError, OSError)`` 里，会直接冲出
+       ``preexec_fn``，让整个 ``Popen`` 失败，表现为
+       ``subprocess.SubprocessError: Exception occurred in preexec_fn.``，
+       判题全部 500。CPython 只把 ``OSError`` 系异常精确回传给父进程，
+       其他异常统一报成上面那句话，所以原始类型在 traceback 里看不到。
+       这里显式取整。
+    2. 单个 rlimit 设不上（某些内核/容器会拒绝）不该让判题整个失败，
+       所以逐个设置、逐个兜底。但**不能静默**：降级信息要留痕。
+
+    注意：这里处于 fork 之后、exec 之前，**不能用 logging**（锁可能在子进程里死锁），
+    只能直接 ``os.write`` 到 stderr —— 那个 fd 此时已接到子进程的 PIPE 上。
+    """
     if os.name != "posix":
         return None
     try:
@@ -194,15 +210,29 @@ def _make_preexec(spec: SandboxSpec):
     except ImportError:
         return None
 
-    mem_bytes = spec.memory_mb * 1024 * 1024
+    mem_bytes = int(spec.memory_mb) * 1024 * 1024
+    cpu_seconds = max(1, int(round(spec.timeout_seconds)))
+    pids_limit = int(spec.pids_limit)
+
+    limits = (
+        ("RLIMIT_AS", resource.RLIMIT_AS, mem_bytes),
+        ("RLIMIT_CPU", resource.RLIMIT_CPU, cpu_seconds),
+        ("RLIMIT_NPROC", resource.RLIMIT_NPROC, pids_limit),
+    )
 
     def preexec() -> None:
-        try:
-            resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
-            resource.setrlimit(resource.RLIMIT_CPU, (spec.timeout_seconds, spec.timeout_seconds))
-            resource.setrlimit(resource.RLIMIT_NPROC, (spec.pids_limit, spec.pids_limit))
-        except (ValueError, OSError):
-            pass
+        for name, which, value in limits:
+            try:
+                resource.setrlimit(which, (value, value))
+            except Exception as exc:  # noqa: BLE001 - 任何异常都不能冲出 preexec
+                try:
+                    os.write(
+                        2,
+                        f"[sandbox] {name}={value} 设置失败（已跳过）："
+                        f"{type(exc).__name__}: {exc}\n".encode("utf-8", "replace"),
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
     return preexec
 
