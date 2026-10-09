@@ -95,9 +95,40 @@ apt install -y bubblewrap
 bwrap --unshare-user --ro-bind / / --dev /dev true && echo "bwrap 可用"
 ```
 
-如果上面报错（常见于 Ubuntu 23.10+ 的 `kernel.apparmor_restrict_unprivileged_userns=1`），
-有两个选择：临时放开设限 `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`，
-或接受退化为“systemd 沙箱 + iptables 出站封锁”这一层。判题仍能工作，
+如果上面报错，基本可以断定是 Ubuntu 23.10+ 的
+`kernel.apparmor_restrict_unprivileged_userns=1` 挡掉了非特权 user namespace。
+
+**✅ 已在真实服务器上验证通过的解法**（Ubuntu 24.04 + bubblewrap 0.9.0，
+`apparmor_restrict_userns=1`）：给 bwrap **单独**放行，而不是全局关掉这个内核限制 ——
+其他程序仍然受保护，只有 bwrap 能建 userns：
+
+```bash
+# 1) 确认确实被限制
+sysctl kernel.apparmor_restrict_unprivileged_userns     # 输出 1 就是它
+
+# 2) 只给 bwrap 加放行策略
+tee /etc/apparmor.d/bwrap >/dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+EOF
+
+systemctl reload apparmor
+
+# 3) 用判题真正会用的那个低权限用户复验（关键：不能用 root 验，root 不受此限制）
+sudo -u csbb bwrap --unshare-user --ro-bind / / --dev /dev true \
+  && echo "✅ csbb 下 bwrap 可用"
+```
+
+> ⚠️ **一定要用 `csbb` 这个用户去验**。以 root 执行永远会成功，root 不受该限制 ——
+> 用 root 验会得到「明明能用但判题全挂」的假结论。
+
+如果连上面的策略也不生效（极少数发行版/内核组合），再退化为
+`sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`（全局放开，影响面大），
+或接受退化为“systemd 沙箱 + iptables 出站封锁”这一层 —— 判题仍能工作，
 但会失去命名空间隔离（后端日志里会有明确的 warning）。
 
 ---
