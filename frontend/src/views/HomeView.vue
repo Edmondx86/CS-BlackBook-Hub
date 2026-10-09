@@ -1,7 +1,7 @@
 <script setup>
 // 首页：全屏走马灯 + 学习路线图 + 向下滚动后的“网站介绍”与“About Us”。
 // 走马灯每 3 秒自动轮换（悬停不暂停）；每张幻灯片配有对应的名言 / 知识点。
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Roadmap from '../components/Roadmap.vue'
 import { headerScrolled } from '../composables/useHeader'
 import { tools } from '../data/tools'
@@ -162,6 +162,75 @@ onBeforeUnmount(() => {
   revealObserver?.disconnect()
 })
 
+/* ==========================================================================
+   支持本站：收款码弹窗
+   --------------------------------------------------------------------------
+   图片约定：frontend/public/images/donate-qr.png。部署时图片可能尚未就位，
+   此时 <img> 的 @error 触发降级文案（不显示破图图标）；每次打开都会重置
+   失败状态，所以之后把图片放进去，重新打开弹窗即可正常显示。
+   ========================================================================== */
+const donateOpen = ref(false)
+const donateQrFailed = ref(false)
+// 收款码路径必须走 JS 常量 + :src 动态绑定：如果写成静态 src="/images/donate-qr.png"，
+// Vite 会在构建期尝试解析这个尚不存在的文件并直接构建失败，@error 降级根本轮不到生效。
+const donateQrSrc = '/images/donate-qr.png'
+const donateTrigger = ref(null) // 触发按钮：关闭后把焦点还给它
+const donateCloseBtn = ref(null) // 关闭按钮：打开后焦点移到这里
+const scrollRoot = ref(null) // 首页真正的滚动容器（见模板根节点）
+
+// 打开前的 overflow 快照，关闭 / 卸载时原样恢复，避免把页面锁死。
+let bodyOverflowBefore = ''
+let rootOverflowBefore = ''
+
+// 打开时禁止背景滚动：任务要求锁 body；而首页的实际滚动发生在根节点
+// （.h-full.overflow-y-auto）上，只锁 body 挡不住背景滚动，所以两者一起锁。
+function lockScroll() {
+  bodyOverflowBefore = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  if (scrollRoot.value) {
+    rootOverflowBefore = scrollRoot.value.style.overflow
+    scrollRoot.value.style.overflow = 'hidden'
+  }
+}
+
+function unlockScroll() {
+  document.body.style.overflow = bodyOverflowBefore
+  if (scrollRoot.value) scrollRoot.value.style.overflow = rootOverflowBefore
+}
+
+function onDonateKeydown(e) {
+  if (e.key === 'Escape') closeDonate()
+}
+
+function openDonate() {
+  donateQrFailed.value = false
+  donateOpen.value = true
+}
+
+function closeDonate() {
+  donateOpen.value = false
+}
+
+// 打开：锁滚动 + Esc 监听 + 焦点移到关闭按钮；关闭：解锁 + 交还焦点。
+watch(donateOpen, async (open) => {
+  if (open) {
+    lockScroll()
+    document.addEventListener('keydown', onDonateKeydown)
+    await nextTick()
+    donateCloseBtn.value?.focus()
+  } else {
+    document.removeEventListener('keydown', onDonateKeydown)
+    unlockScroll()
+    donateTrigger.value?.focus()
+  }
+})
+
+// 组件卸载（例如切换路由）时兜底：解除监听并恢复 overflow，不留副作用。
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDonateKeydown)
+  unlockScroll()
+})
+
 // 文字阴影：深色背景用深色阴影、浅色背景用浅色光晕，保证与背景的区分度。
 function shadowFor(light) {
   return light
@@ -188,7 +257,7 @@ function onScroll(e) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto" @scroll="onScroll">
+  <div ref="scrollRoot" class="h-full overflow-y-auto" @scroll="onScroll">
     <!-- ======================= 全屏走马灯 ======================= -->
     <section class="relative h-full w-full overflow-hidden">
       <!-- 幻灯片（交叉淡入淡出） -->
@@ -409,7 +478,12 @@ function onScroll(e) {
         </li>
         <li>
           <strong class="font-semibold text-primary">支持本站</strong>：本站完全免费且由个人运维，如果对你有帮助，欢迎
-          <a href="#" class="text-theme-light transition hover:underline">请作者喝杯咖啡</a>！
+          <button
+            ref="donateTrigger"
+            type="button"
+            class="text-theme-light transition hover:underline"
+            @click="openDonate"
+          >请作者喝杯咖啡</button>！
         </li>
       </ul>
     </section>
@@ -477,7 +551,53 @@ function onScroll(e) {
       </p>
     </footer>
 
-  
+    <!-- ======================= 收款码弹窗（Teleport 到 body，避免被父级裁切） ======================= -->
+    <Teleport to="body">
+      <!-- 遮罩：flex + overflow-y-auto + 卡片 m-auto，既能垂直居中，又不会在矮视口裁掉顶部 -->
+      <div
+        v-if="donateOpen"
+        class="fixed inset-0 z-[100] flex overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+        @click.self="closeDonate"
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="donate-dialog-title"
+          class="relative m-auto w-full max-w-sm rounded-xl border border-line bg-card p-6 text-center text-primary shadow-2xl"
+        >
+          <button
+            ref="donateCloseBtn"
+            type="button"
+            aria-label="关闭"
+            class="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-elevated hover:text-primary"
+            @click="closeDonate"
+          >
+            ✕
+          </button>
+
+          <h3 id="donate-dialog-title" class="text-xl font-semibold text-primary">请作者喝杯咖啡</h3>
+          <p class="mt-2 text-sm text-muted">本站完全免费，由个人运维；如果对你有帮助，欢迎支持。</p>
+
+          <!-- 收款码：图片未就位时降级为一句提示，不显示破图图标 -->
+          <div class="mt-5 flex justify-center">
+            <img
+              v-if="!donateQrFailed"
+              :src="donateQrSrc"
+              alt="作者收款码"
+              class="max-w-[260px] rounded border border-line/60 object-contain"
+              @error="donateQrFailed = true"
+            />
+            <p
+              v-else
+              class="w-full max-w-[260px] rounded border border-dashed border-line/60 bg-elevated/40 px-4 py-10 text-sm text-muted"
+            >
+              收款码准备中，稍后再来看看
+            </p>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
   </div>
 </template>
 
