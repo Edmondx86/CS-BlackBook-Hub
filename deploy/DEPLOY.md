@@ -328,9 +328,19 @@ systemctl daemon-reload && systemctl restart csbb-backend
 journalctl -u csbb-backend | grep -i bwrap
 ```
 
-> 判题隔离一共三层，缺一层就少一道防线：
-> **bwrap**（命名空间 + 只读根 + 私有 /tmp）→ **systemd**（`ProtectSystem` / `NoNewPrivileges` /
-> 内存与 CPU 上限）→ **iptables 按 uid 封锁出站**（第 7 节）。
+> 判题隔离三层：**bwrap**（命名空间 + 只读根 + 私有 /tmp）→ **systemd**
+> （`NoNewPrivileges` / `RestrictAddressFamilies` / 内存与 CPU 上限）→
+> **iptables 按 uid 封锁出站**（第 7 节）。
+>
+> ⚠️ **systemd 那一层不能用 `ProtectSystem` / `PrivateTmp` / `ProtectHome` /
+> `ProtectKernel*` 那批指令** —— 它们的实现方式都是创建并**锁定** mount namespace，
+> 而 bwrap 必须在那里重新挂载 `/proc`，会直接失败：
+> `bwrap: Can't mount proc on /newroot/proc: Operation not permitted`，
+> 表现为**每个判题都挂**。更坑的是 `_bwrap_usable()` 的最小探测不含 `--proc`，
+> 所以日志里**没有任何 warning**，极难定位。
+> 锁定挂载点是 systemd 的故意设计（防服务逃逸），没有配置技巧能两全 —— 这里选
+> bwrap，它才是隔离**学生代码**的那一层。详见
+> [csbb-backend.service](csbb-backend.service) 文件头的说明。
 
 ## 6. 配置 nginx
 

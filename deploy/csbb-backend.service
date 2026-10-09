@@ -3,12 +3,23 @@
 # 安装位置：/etc/systemd/system/csbb-backend.service
 # 用法见 deploy/DEPLOY.md
 #
-# 为什么要写这么多沙箱化指令：
-#   判题接口会在本服务的子进程里执行访客提交的 Python 代码。隔离一共三层：
-#     1) bubblewrap（应用层，见 backend/app/services/sandbox.py）：命名空间 + 只读根 + 私有 /tmp
-#     2) 本文件的 systemd 限制：写不了系统目录、看不到家目录、开不了奇怪的内核接口
-#     3) iptables 按 uid 封锁出站（见 deploy/DEPLOY.md 第 7 节）
-#   缺任何一层都少一道防线。
+# 判题会在本服务的子进程里执行访客提交的代码，隔离一共三层：
+#   1) bubblewrap（应用层，见 backend/app/services/sandbox.py）：命名空间 + 只读根 + 私有 /tmp
+#   2) 本文件的 systemd 限制：写不了系统目录、起不了奇怪的内核接口
+#   3) iptables 按 uid 封锁出站（见 deploy/DEPLOY.md 第 7 节）
+#
+# ⚠️⚠️ 一条必须记住的互斥关系（实测踩过，见下方注释）⚠️⚠️
+#   systemd 的 PrivateTmp / PrivateDevices / ProtectSystem / ProtectHome /
+#   ProtectKernel* / ProtectControlGroups 这些指令，实现方式都是**给服务创建独立的
+#   mount namespace 并把挂载点锁定**（MNT_LOCKED）。而 bubblewrap 必须在那个 namespace
+#   里重新挂载 /proc，遇到锁定的挂载点会直接失败：
+#       bwrap: Can't mount proc on /newroot/proc: Operation not permitted
+#   结果就是**每个判题都挂**，而且 `_bwrap_usable()` 的最小探测（不含 --proc）依然返回
+#   成功，于是没有任何 warning —— 非常难查。
+#   锁定挂载点是 systemd 的**故意设计**（防服务逃逸），没有配置技巧能两全，必须二选一。
+#   这里选 bubblewrap：它才是真正隔离**学生代码**的那一层；systemd 那层保护的是服务自身，
+#   而服务本来就以无特权用户 csbb 运行。
+#   所以下面**刻意不用**那批 mount-namespace 类指令，只用与 bwrap 兼容的限制。
 
 [Unit]
 Description=CS-BlackBook-Hub backend (FastAPI + uvicorn)
@@ -40,21 +51,20 @@ ExecStart=/srv/cs-blackbook/backend/venv/bin/uvicorn app.main:app --host 127.0.0
 Restart=always
 RestartSec=3
 
-# ---------- 沙箱化 ----------
+# ---------- 与 bwrap 兼容的加固 ----------
+# 这些**不会**创建/锁定 mount namespace，因此不会妨碍 bubblewrap：
 NoNewPrivileges=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectSystem=strict
-ProtectHome=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 RestrictRealtime=yes
 LockPersonality=yes
+# 判题要用 TCP/UDP（AF_INET/AF_INET6）与本地套接字（AF_UNIX），其余协议族一律禁止
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-# 判题只需要临时目录（PrivateTmp 提供的私有 /tmp 可写），
-# 其余路径一律只读，因此这里不额外放开任何 ReadWritePaths。
+
+# ⚠️ 别加回来（会让判题全部失败，原因见文件头）：
+#   PrivateTmp / PrivateDevices / ProtectSystem / ProtectHome /
+#   ProtectKernelTunables / ProtectKernelModules / ProtectControlGroups
+# ⚠️ 也别加 CapabilityBoundingSet= —— bounding set 会继承进 user namespace，
+#   导致 bwrap 在里面拿不到 CAP_SYS_ADMIN，同样挂不上 /proc。
 
 # ---------- 资源上限 ----------
 # 防止大量并发判题把轻量服务器打满
