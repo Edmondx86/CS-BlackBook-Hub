@@ -38,8 +38,12 @@ h1 code, h2 code, h3 code, h4 code, h5 code, h6 code {
   color: rgb(var(--theme));
   text-decoration: underline;
 }
+/* 强调：中文小字号下只靠 font-weight 几乎看不出区别 —— 多数中文字体没有真正的粗体，
+   浏览器合成的粗体又糊又弱，不像英文那样一眼可辨。所以额外用品牌色 + 明确字重
+   把它拉开。术语在正文里已经用 `code` 表示，加粗这里主要承担「整句强调」。 */
 .markdown-body strong {
-  color: rgb(var(--text-primary));
+  color: rgb(var(--brand));
+  font-weight: 700;
 }
 .markdown-body ul,
 .markdown-body ol {
