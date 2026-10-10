@@ -163,17 +163,30 @@ onBeforeUnmount(() => {
 })
 
 /* ==========================================================================
-   支持本站：收款码弹窗
+   支持本站：收款码弹窗（微信 + 支付宝两张并排）
    --------------------------------------------------------------------------
-   图片约定：frontend/public/images/donate-qr.png。部署时图片可能尚未就位，
-   此时 <img> 的 @error 触发降级文案（不显示破图图标）；每次打开都会重置
-   失败状态，所以之后把图片放进去，重新打开弹窗即可正常显示。
+   图片约定：frontend/public/images/donate-wechat.png 与 donate-alipay.png。
+   部署时图片可能尚未就位，此时该槽位的 <img> 的 @error 触发降级文案（不显示
+   破图图标）；每次打开都会重置全部失败状态，所以之后把图片放进去，重新打开
+   弹窗即可正常显示。两个槽位各自独立记录失败状态，因此可以出现
+   “微信正常、支付宝降级”这种组合，不会因为一张缺失就把整个弹窗变成提示。
    ========================================================================== */
 const donateOpen = ref(false)
-const donateQrFailed = ref(false)
-// 收款码路径必须走 JS 常量 + :src 动态绑定：如果写成静态 src="/images/donate-qr.png"，
-// Vite 会在构建期尝试解析这个尚不存在的文件并直接构建失败，@error 降级根本轮不到生效。
-const donateQrSrc = '/images/donate-qr.png'
+
+// 收款码路径必须走 JS 常量 + :src 动态绑定：如果写成静态 src="/images/donate-wechat.png"，
+// Vite 会在构建期尝试解析这两个尚不存在的文件并直接构建失败（Rollup failed to resolve
+// import），@error 降级根本轮不到生效。
+const donateWechatSrc = '/images/donate-wechat.png'
+const donateAlipaySrc = '/images/donate-alipay.png'
+
+// 两个槽位：标签放在图片下方，src 全部来自上面的常量。
+const donateSlots = [
+  { key: 'wechat', label: '微信', src: donateWechatSrc },
+  { key: 'alipay', label: '支付宝', src: donateAlipaySrc },
+]
+
+// 按槽位 key 记录加载失败状态：{ wechat: false, alipay: false }。
+const donateQrFailed = ref(Object.fromEntries(donateSlots.map((slot) => [slot.key, false])))
 const donateTrigger = ref(null) // 触发按钮：关闭后把焦点还给它
 const donateCloseBtn = ref(null) // 关闭按钮：打开后焦点移到这里
 const scrollRoot = ref(null) // 首页真正的滚动容器（见模板根节点）
@@ -203,7 +216,8 @@ function onDonateKeydown(e) {
 }
 
 function openDonate() {
-  donateQrFailed.value = false
+  // 每次打开都重置两个槽位的失败状态：之后把图片放进去，重开弹窗即可正常显示。
+  for (const slot of donateSlots) donateQrFailed.value[slot.key] = false
   donateOpen.value = true
 }
 
@@ -563,7 +577,7 @@ function onScroll(e) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="donate-dialog-title"
-          class="relative m-auto w-full max-w-sm rounded-xl border border-line bg-card p-6 text-center text-primary shadow-2xl"
+          class="relative m-auto w-full max-w-md rounded-xl border border-line bg-card p-6 text-center text-primary shadow-2xl"
         >
           <button
             ref="donateCloseBtn"
@@ -578,21 +592,29 @@ function onScroll(e) {
           <h3 id="donate-dialog-title" class="text-xl font-semibold text-primary">请作者喝杯咖啡</h3>
           <p class="mt-2 text-sm text-muted">本站完全免费，由个人运维；如果对你有帮助，欢迎支持。</p>
 
-          <!-- 收款码：图片未就位时降级为一句提示，不显示破图图标 -->
-          <div class="mt-5 flex justify-center">
-            <img
-              v-if="!donateQrFailed"
-              :src="donateQrSrc"
-              alt="作者收款码"
-              class="max-w-[260px] rounded border border-line/60 object-contain"
-              @error="donateQrFailed = true"
-            />
-            <p
-              v-else
-              class="w-full max-w-[260px] rounded border border-dashed border-line/60 bg-elevated/40 px-4 py-10 text-sm text-muted"
+          <!-- 收款码：微信 / 支付宝两个槽位，窄屏上下堆叠、宽屏并排；
+               某个槽位的图片未就位时只有那一格降级为提示，不影响另一格。 -->
+          <div class="mt-5 flex flex-col items-center justify-center gap-4 sm:flex-row sm:items-start">
+            <div
+              v-for="slot in donateSlots"
+              :key="slot.key"
+              class="flex w-full flex-col items-center sm:flex-1"
             >
-              收款码准备中，稍后再来看看
-            </p>
+              <img
+                v-if="!donateQrFailed[slot.key]"
+                :src="slot.src"
+                :alt="`${slot.label}收款码`"
+                class="w-full max-w-[200px] rounded border border-line/60 object-contain"
+                @error="donateQrFailed[slot.key] = true"
+              />
+              <p
+                v-else
+                class="flex w-full max-w-[200px] min-h-[200px] items-center justify-center rounded border border-dashed border-line/60 bg-elevated/40 px-4 py-10 text-sm text-muted"
+              >
+                收款码准备中，稍后再来看看
+              </p>
+              <span class="mt-2 text-sm text-muted">{{ slot.label }}</span>
+            </div>
           </div>
         </div>
       </div>
